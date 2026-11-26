@@ -28,7 +28,7 @@
           "volume": "(Sonos only) Volume of the replies. Leave empty to use the speaker's set volume.",
           "duck": "Lower whatever plays on the speaker from the start of a command until you stop speaking.",
           "announcements": "Also play the satellite's announcements on the speaker. Reply rules don't apply to these.",
-          "rules": "Rules for further altering responses. Custom rules should go into <config>/tts_relay/rules/"
+          "rules": "Rules for further altering responses. Custom rules should go into config/tts_relay/rules/"
         }
       }
     },
@@ -64,7 +64,7 @@
             "volume": "(Sonos only) Volume of the replies. Leave empty to use the speaker's set volume.",
             "duck": "Lower whatever plays on the speaker from the start of a command until you stop speaking.",
             "announcements": "Also play the satellite's announcements on the speaker. Reply rules don't apply to these.",
-            "rules": "Rules for further altering responses. Custom rules should go into <config>/tts_relay/rules/"
+            "rules": "Rules for further altering responses. Custom rules should go into config/tts_relay/rules/"
           }
         },
         "reconfigure": {
@@ -86,7 +86,7 @@
             "volume": "(Sonos only) Volume of the replies. Leave empty to use the speaker's set volume.",
             "duck": "Lower whatever plays on the speaker from the start of a command until you stop speaking.",
             "announcements": "Also play the satellite's announcements on the speaker. Reply rules don't apply to these.",
-            "rules": "Rules for further altering responses. Custom rules should go into <config>/tts_relay/rules/"
+            "rules": "Rules for further altering responses. Custom rules should go into config/tts_relay/rules/"
           }
         }
       },
@@ -113,7 +113,7 @@
     },
     "reload": {
       "name": "Reload",
-      "description": "Reads the reply rules and sounds again, from the integration and from <config>/tts_relay/."
+      "description": "Reads the reply rules and sounds again, from the integration and from config/tts_relay/."
     }
   }
 }

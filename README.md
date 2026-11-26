@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/charludo/hass-tts-relay/refs/heads/main/custom_components/tts_relay/brand/logo.png" alt="hass-tts-relay" height="512px"/>
+  <img src="https://raw.githubusercontent.com/charludo/hass-tts-relay/refs/heads/main/custom_components/tts_relay/brand/logo@2x.png" alt="hass-tts-relay" height="512px"/>
   <h1>hass-tts-relay</h1>
 </div>
 
