@@ -34,6 +34,20 @@ Additionally, ducking works for a lot of players out of the box (more on this be
 I've been using this approach for a couple of months now, with no issues at all, on some Sonos speakers.
 If you encounter any problems, please feel free to open an issue.
 
+### 📽 Demo
+
+Here's a short demo video (watch it with sound!).
+
+[Demo Video (with sound)](https://github.com/user-attachments/assets/1c121e02-4243-4a38-9dcf-8b9d71e5375d)
+
+Notice:
+
+- Music is playing from the speaker.
+- Satellite and speaker are not connected.
+- Upon wake word detection and during TTS replies, music volume is ducked.
+- A custom rule replaces "Strahler is now on." with a chime.
+- No perceptible extra latency (!).
+
 &#160;
 
 ### 💡 How it works
