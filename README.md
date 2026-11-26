@@ -63,16 +63,13 @@ The TTS Relay instead wraps the satellite entity's pipeline callback, to expose 
 
 ### 📦 Installation
 
-#### Via HACS, officially [WIP]
+[![Open your Home Assistant instance and open this repository in the Marketplace.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=charludo&repository=hass-tts-relay&category=integration)
 
-> ⚠️ `tts-relay` is not yet in the official HACS repos. I will add this section once it's in.
+Requires Home Assistant 2026.11 or newer.
 
-#### Via HACS, custom repository
-
-1. Open HACS, click the three-dot menu (top right) -> **Custom repositories**.
-1. Paste `https://github.com/charludo/hass-tts-relay`, set **Type** to *Integration*, click
-   **Add**.
-1. Find **TTS Relay** in the HACS list, click **Download**.
+1. Go to **Settings** -> **Marketplace** and select **Add from link** (top right).
+1. Enter `charludo/hass-tts-relay` and select **Add**. If asked, connect Home Assistant to GitHub first.
+1. Open **TTS Relay** and install it.
 1. Restart Home Assistant.
 1. Add the integration (see below).
 
