@@ -3,6 +3,7 @@ from pathlib import Path
 import aiohttp
 from conftest import BASE_URL, setup_relay
 from homeassistant.components.assist_pipeline import PipelineEvent, PipelineEventType
+from homeassistant.data_entry_flow import FlowResultType
 
 SAT = "assist_satellite.living_room"
 SPEAKER = "media_player.living_room"
@@ -144,6 +145,43 @@ async def test_rule_variables(hass, players):
     await hass.services.async_call("tts_relay", "reload", blocking=True)
     await reply(hass, relay, {"speech": {"plain": {"speech": "hi"}}})
     assert players.urls() == [f"{BASE_URL}/{SAT}/{SPEAKER}/hi/None/{TTS}"]
+
+
+async def test_config_flow_rules(hass, players):
+    relay = await setup_relay(hass, players)
+
+    result = await hass.config_entries.flow.async_init("tts_relay", context={"source": "user"})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "add_route"}
+    )
+    assert "Quiet on misses" in result["description_placeholders"]["rules"]
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"name": "Living room", "satellites": [SAT], "target": SPEAKER}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert relay.route_for(SAT).rules == ("intent_sounds",)
+
+    async def change_rules(rules):
+        entry = hass.config_entries.async_entries("tts_relay")[0]
+        (subentry_id,) = entry.subentries
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, "route"),
+            context={"source": "reconfigure", "subentry_id": subentry_id},
+        )
+        assert "Quiet on misses" in result["description_placeholders"]["rules"]
+        await hass.config_entries.subentries.async_configure(
+            result["flow_id"], {"target": SPEAKER, "rules": rules}
+        )
+        await hass.async_block_till_done(wait_background_tasks=True)
+
+    await change_rules(["quiet_on_no_match", "chime_on_error"])
+    assert relay.route_for(SAT).rules == ("quiet_on_no_match", "chime_on_error")
+
+    await change_rules([])
+    assert relay.route_for(SAT).rules == ()
+    await reply(hass, relay, card("silent"))
+    assert players.urls() == [BASE_URL + TTS]
 
 
 def done(*targets: str, response_type: str = "action_done") -> dict:

@@ -1,6 +1,7 @@
 import aiohttp
 from conftest import BASE_URL, FakeSonos, setup_relay
 from homeassistant.components.assist_pipeline import PipelineEvent, PipelineEventType
+from homeassistant.data_entry_flow import FlowResultType
 
 SAT = "assist_satellite.living_room"
 OTHER_SAT = "assist_satellite.kitchen"
@@ -269,3 +270,195 @@ async def test_yaml_routes_must_be_distinct(hass):
     ):
         with pytest.raises(vol.Invalid):
             CONFIG_SCHEMA({"tts_relay": {"routes": routes}})
+
+
+async def start_setup(hass, choice):
+    result = await hass.config_entries.flow.async_init("tts_relay", context={"source": "user"})
+    assert result["type"] is FlowResultType.MENU
+    return await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": choice}
+    )
+
+
+async def settle(hass):
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+
+def entry(hass):
+    (only,) = hass.config_entries.async_entries("tts_relay")
+    return only
+
+
+def subentry(hass, id_):
+    (sub,) = [s for s in entry(hass).subentries.values() if s.unique_id == id_]
+    return sub
+
+
+async def add_route(hass, form):
+    result = await hass.config_entries.subentries.async_init(
+        (entry(hass).entry_id, "route"), context={"source": "user"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    result = await hass.config_entries.subentries.async_configure(result["flow_id"], form)
+    await settle(hass)
+    return result
+
+
+async def reconfigure(hass, id_, form=None):
+    result = await hass.config_entries.subentries.async_init(
+        (entry(hass).entry_id, "route"),
+        context={"source": "reconfigure", "subentry_id": subentry(hass, id_).subentry_id},
+    )
+    if form is not None:
+        result = await hass.config_entries.subentries.async_configure(result["flow_id"], form)
+        await settle(hass)
+    return result
+
+
+def add_subentry(hass, id_, data):
+    from types import MappingProxyType
+
+    from homeassistant.config_entries import ConfigSubentry
+
+    hass.config_entries.async_add_subentry(
+        entry(hass),
+        ConfigSubentry(
+            data=MappingProxyType(data), subentry_type="route", title=data["name"], unique_id=id_
+        ),
+    )
+
+
+async def test_setup_with_a_first_route(hass, players):
+    relay = await setup_relay(hass, players)
+
+    result = await start_setup(hass, "add_route")
+    assert result["type"] is FlowResultType.FORM
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**BOTH, "volume": 40}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await settle(hass)
+    route = relay.route_for(OTHER_SAT)
+    assert route is relay.route_for(SAT)
+    assert (route.name, route.target, route.volume, route.duck) == (
+        "Living room",
+        SPEAKER,
+        0.4,
+        True,
+    )
+    assert subentry(hass, "living_room").title == "Living room"
+
+    result = await hass.config_entries.flow.async_init("tts_relay", context={"source": "user"})
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "single_instance_allowed"
+
+
+async def test_setup_without_routes_then_add_change_remove(hass, players):
+    relay = await setup_relay(hass, players)
+
+    result = await start_setup(hass, "finish")
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await settle(hass)
+    assert not entry(hass).subentries
+    assert not relay.routes
+
+    result = await add_route(hass, BOTH)
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert relay.route_for(OTHER_SAT).target == SPEAKER
+
+    office = "media_player.office"
+    result = await add_route(
+        hass, {"name": "Living Room", "satellites": ["assist_satellite.x"], "target": office}
+    )
+    assert result["errors"] == {"name": "name_taken"}
+    result = await add_route(hass, {"name": "Office", "satellites": [SAT], "target": office})
+    assert result["errors"] == {"satellites": "satellite_taken"}
+    assert result["description_placeholders"]["taken"] == f"{SAT} (Living room)"
+
+    result = await reconfigure(hass, "living_room", {**BOTH, "duck": False})
+    assert result["reason"] == "reconfigure_successful"
+    assert relay.route_for(SAT).duck is False
+
+    result = await reconfigure(
+        hass, "living_room", {"name": "Downstairs", "satellites": [SAT], "target": office}
+    )
+    assert result["reason"] == "reconfigure_successful"
+    route = relay.route_for(SAT)
+    assert (route.name, route.target, route.duck) == ("Downstairs", office, False)
+    assert relay.route_for(OTHER_SAT) is None
+    assert subentry(hass, "downstairs").title == "Downstairs"
+
+    hass.config_entries.async_remove_subentry(entry(hass), subentry(hass, "downstairs").subentry_id)
+    await settle(hass)
+    assert relay.route_for(SAT) is None
+
+
+async def test_yaml_routes_are_listed_but_not_editable(hass, players):
+    relay = await setup_relay(hass, players, [{**BOTH, "satellites": [SAT], "volume": 0.3}])
+    result = await start_setup(hass, "add_route")
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"name": "Other", "satellites": [SAT, OTHER_SAT], "target": SPEAKER}
+    )
+    assert result["errors"] == {"satellites": "satellite_taken"}
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"name": "Living room", "satellites": [OTHER_SAT], "target": SPEAKER}
+    )
+    assert result["errors"] == {"name": "name_taken"}
+
+    await start_setup(hass, "finish")
+    await settle(hass)
+    mirror = subentry(hass, "living_room")
+    assert mirror.title == "Living room (YAML)"
+    assert (mirror.data["satellites"], mirror.data["volume"]) == ([SAT], 0.3)
+
+    result = await reconfigure(hass, "living_room")
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "managed_in_yaml"
+
+    result = await add_route(hass, {"name": "Kitchen", "satellites": [SAT], "target": SPEAKER})
+    assert result["errors"] == {"satellites": "satellite_taken"}
+
+    hass.config_entries.async_remove_subentry(entry(hass), mirror.subentry_id)
+    await settle(hass)
+    assert relay.route_for(SAT).source == "yaml"
+    assert subentry(hass, "living_room").data["yaml"] is True
+
+
+async def test_mirrors_follow_the_yaml(hass, players):
+    relay = await setup_relay(hass, players, [BOTH])
+    await start_setup(hass, "finish")
+    await settle(hass)
+    gone = {"name": "Gone", "satellites": ["assist_satellite.x"], "target": SPEAKER, "yaml": True}
+    add_subentry(hass, "gone", gone)
+    await settle(hass)
+    assert [s.unique_id for s in entry(hass).subentries.values()] == ["living_room"]
+    assert relay.route_for("assist_satellite.x") is None
+
+
+async def test_yaml_takes_over_a_ui_route(hass, players):
+    relay = await setup_relay(hass, players, [{**BOTH, "satellites": [SAT]}])
+    await start_setup(hass, "finish")
+    await settle(hass)
+    hass.config_entries.async_update_subentry(
+        entry(hass), subentry(hass, "living_room"), data={**BOTH, "target": "media_player.office"}
+    )
+    await settle(hass)
+    assert relay.route_for(SAT).target == SPEAKER
+    assert subentry(hass, "living_room").data["yaml"] is True
+
+    add_subentry(
+        hass, "kitchen", {"name": "Kitchen", "satellites": [SAT, OTHER_SAT], "target": SPEAKER}
+    )
+    await settle(hass)
+    assert relay.route_for(SAT).source == "yaml"
+    assert relay.route_for(OTHER_SAT).name == "Kitchen"
+
+
+async def test_ui_texts_load(hass, players):
+    from homeassistant.helpers.translation import async_get_translations
+
+    await setup_relay(hass, players)
+    texts = await async_get_translations(hass, "en", "config", ["tts_relay"])
+    assert texts["component.tts_relay.config.step.add_route.data.satellites"] == "Satellites"
+    texts = await async_get_translations(hass, "en", "config_subentries", ["tts_relay"])
+    assert texts["component.tts_relay.config_subentries.route.initiate_flow.user"] == "Add route"

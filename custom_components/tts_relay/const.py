@@ -17,6 +17,9 @@ CONF_DUCK = "duck"
 CONF_ROUTES = "routes"
 CONF_RULES = "rules"
 CONF_SOUNDS = "sounds"
+CONF_YAML = "yaml"
+
+SUBENTRY_ROUTE = "route"
 
 DEFAULT_DUCK = True
 

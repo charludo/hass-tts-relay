@@ -1,0 +1,10 @@
+{
+  "services": {
+    "stop": {
+      "service": "mdi:stop"
+    },
+    "reload": {
+      "service": "mdi:reload"
+    }
+  }
+}

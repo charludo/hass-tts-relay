@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import voluptuous as vol
 from homeassistant.components.http import StaticPathConfig
+from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.const import ATTR_ENTITY_ID
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
@@ -21,6 +24,7 @@ from .const import (
     CONF_SOUNDS,
     CONF_TARGET,
     CONF_VOLUME,
+    CONF_YAML,
     DATA_RELAY,
     DEFAULT_DUCK,
     DOMAIN,
@@ -28,6 +32,7 @@ from .const import (
     SERVICE_RELOAD,
     SERVICE_STOP,
     SOUNDS_URL_PATH,
+    SUBENTRY_ROUTE,
 )
 from .relay import Relay, Route, install, route_id
 from .rules import async_load_rules, async_load_sounds, user_dir
@@ -136,4 +141,82 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     hass.services.async_register(DOMAIN, SERVICE_STOP, stop, schema=STOP_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_RELOAD, reload, schema=vol.Schema({}))
+    return True
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    relay = hass.data[DATA_RELAY]
+    _sync_yaml_subentries(hass, entry, relay)
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type != SUBENTRY_ROUTE or subentry.data.get(CONF_YAML):
+            continue
+        route = _route(subentry.data, "ui")
+        in_yaml = [
+            satellite
+            for satellite in route.satellites
+            if (other := relay.route_for(satellite)) and other.source == "yaml"
+        ]
+        if in_yaml:
+            _LOGGER.warning(
+                "Route %s: %s routed in YAML, which wins", route.name, ", ".join(in_yaml)
+            )
+            satellites = tuple(s for s in route.satellites if s not in in_yaml)
+            if not satellites:
+                continue
+            route = dataclasses.replace(route, satellites=satellites)
+        _warn_about_unknown_rules(relay, route)
+        entry.async_on_unload(relay.add_route(route))
+    # Registered after the sync, so it only hears about changes made in the UI.
+    entry.async_on_unload(entry.add_update_listener(_async_reload))
+    return True
+
+
+async def _async_reload(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    hass.config_entries.async_schedule_reload(entry.entry_id)
+
+
+def _yaml_route_data(route: Route) -> dict[str, Any]:
+    data: dict[str, Any] = {
+        CONF_NAME: route.name,
+        CONF_SATELLITES: list(route.satellites),
+        CONF_TARGET: route.target,
+        CONF_DUCK: route.duck,
+        CONF_YAML: True,
+    }
+    if route.volume is not None:
+        data[CONF_VOLUME] = route.volume
+    if route.rules is not None:
+        data[CONF_RULES] = list(route.rules)
+    return data
+
+
+@callback
+def _sync_yaml_subentries(hass: HomeAssistant, entry: ConfigEntry, relay: Relay) -> None:
+    """Mirror the YAML routes as subentries, so the UI lists them."""
+    yaml_routes = {id_: route for id_, route in relay.routes.items() if route.source == "yaml"}
+    by_id = {sub.unique_id: sub for sub in entry.subentries.values()}
+    for id_, route in yaml_routes.items():
+        data = _yaml_route_data(route)
+        title = f"{route.name} (YAML)"
+        subentry = by_id.get(id_)
+        if subentry is None:
+            hass.config_entries.async_add_subentry(
+                entry,
+                ConfigSubentry(
+                    data=MappingProxyType(data),
+                    subentry_type=SUBENTRY_ROUTE,
+                    title=title,
+                    unique_id=id_,
+                ),
+            )
+            continue
+        if not subentry.data.get(CONF_YAML):
+            _LOGGER.warning("Route %s is now set in YAML, which replaces the UI one", route.name)
+        hass.config_entries.async_update_subentry(entry, subentry, data=data, title=title)
+    for subentry in list(entry.subentries.values()):
+        if subentry.data.get(CONF_YAML) and subentry.unique_id not in yaml_routes:
+            hass.config_entries.async_remove_subentry(entry, subentry.subentry_id)
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True

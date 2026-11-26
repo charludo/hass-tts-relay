@@ -3,6 +3,8 @@
   "name": "TTS Relay",
   "after_dependencies": ["assist_satellite", "media_player", "sonos"],
   "codeowners": ["@charludo"],
+  "config_flow": true,
+  "single_config_entry": true,
   "dependencies": ["http"],
   "documentation": "https://github.com/charludo/hass-tts-relay",
   "integration_type": "service",
