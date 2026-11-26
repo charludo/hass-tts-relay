@@ -1,0 +1,8 @@
+name: Chime on success
+description: >-
+  When a built-in command did what it was told, play the sound named `acknowledge` instead of confirming it in words. Needs a sound named `acknowledge`.
+default: false
+priority: 20
+reply: >-
+  {{ 'acknowledge' if 'acknowledge' in sounds and (acknowledged
+     or (response.response_type == 'action_done' and (response.get('data') or {}).get('success'))) }}

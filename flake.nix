@@ -15,6 +15,12 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
+        pythonEnv = pkgs.home-assistant.python3Packages.python.withPackages (ps: [
+          (ps.toPythonModule pkgs.home-assistant)
+          ps.pytest
+          ps.pytest-asyncio
+        ]);
+
         fmtTools = with pkgs; [
           treefmt
           nixfmt
@@ -28,10 +34,26 @@
       {
         devShells.default = pkgs.mkShell {
           name = "tts-relay-dev";
-          packages = fmtTools;
+          packages = [ pythonEnv ] ++ fmtTools;
         };
 
         checks = {
+          tests =
+            pkgs.runCommand "tts-relay-tests"
+              {
+                nativeBuildInputs = [ pythonEnv ];
+                src = self;
+              }
+              ''
+                cp -r $src/. ./work
+                chmod -R u+w ./work
+                cd ./work
+                export HOME="$TMPDIR"
+                # Home Assistant's own deprecation warnings aren't ours to fix.
+                ${pkgs.lib.getExe' pythonEnv "pytest"} tests/ -v -p no:cacheprovider -o filterwarnings=
+                touch $out
+              '';
+
           lint =
             pkgs.runCommand "tts-relay-lint"
               {

@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tts_relay"
+version = "0.1.0"
+description = "Relay voice replies and announcements of one or more satellites to a media player."
+readme = "README.md"
+license = { text = "AGPL-3.0" }
+requires-python = ">=3.13"
+authors = [{ name = "Charlotte Hartmann Paludo" }]
+dependencies = []
+
+[project.optional-dependencies]
+test = ["homeassistant>=2026.10.0", "pytest>=8", "pytest-asyncio>=0.21"]
+dev = ["tts_relay[test]", "ruff>=0.6"]
+
+[project.urls]
+Homepage = "https://github.com/charludo/hass-tts-relay"
+Issues = "https://github.com/charludo/hass-tts-relay/issues"
+
+[tool.setuptools]
+packages = []
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "UP",  # pyupgrade
+  "SIM", # flake8-simplify
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["tts_relay"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

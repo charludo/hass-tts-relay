@@ -1,0 +1,7 @@
+name: Sounds requested by intents
+description: >-
+  An intent can ask for a sound instead of its spoken reply, with a card of type `tts_relay` whose title names the sound, or `silent` for no reply at all.
+default: true
+priority: 10
+reply: >-
+  {% if card %}{{ 'drop' if card.title == 'silent' else card.title }}{% endif %}

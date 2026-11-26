@@ -1,0 +1,7 @@
+name: Chime on error
+description: >-
+  When a command was understood but couldn't be carried out, play the sound named `error` instead of the spoken explanation. Needs a sound named `error`.
+default: false
+priority: 60
+reply: >-
+  {{ 'error' if error_code and error_code != 'no_intent_match' and 'error' in sounds }}

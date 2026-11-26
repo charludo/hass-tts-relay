@@ -1,0 +1,9 @@
+stop:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          domain: media_player
+          multiple: true
+reload:

@@ -1,0 +1,6 @@
+name: Quiet on misses
+description: >-
+  Say nothing when no sentence matched what was heard, instead of apologising. Makes false wakes less annoying.
+default: false
+priority: 50
+reply: "{{ 'drop' if error_code == 'no_intent_match' }}"
