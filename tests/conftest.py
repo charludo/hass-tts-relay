@@ -65,6 +65,7 @@ class Players:
     def __init__(self, hass: HomeAssistant) -> None:
         self.played: list[dict] = []
         self.stopped: list[list[str]] = []
+        self.volumes: list[tuple[str, float]] = []
         self.sonos: dict[str, FakeSonos] = {}
 
         async def play_media(call: ServiceCall) -> None:
@@ -80,7 +81,11 @@ class Players:
 
         hass.services.async_register("media_player", "play_media", play_media)
 
+        async def volume_set(call: ServiceCall) -> None:
+            self.volumes.append((call.data["entity_id"], round(call.data["volume_level"], 2)))
+
         hass.services.async_register("media_player", "media_stop", media_stop)
+        hass.services.async_register("media_player", "volume_set", volume_set)
 
     def urls(self) -> list[str]:
         return [p["media_content_id"] for p in self.played]

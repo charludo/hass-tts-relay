@@ -9,6 +9,12 @@ from typing import Any
 
 from homeassistant.components.assist_pipeline import PipelineEvent, PipelineEventType
 from homeassistant.components.assist_satellite.entity import AssistSatelliteEntity
+from homeassistant.components.media_player import (
+    ATTR_MEDIA_VOLUME_LEVEL,
+    MediaPlayerEntityFeature,
+    MediaPlayerState,
+)
+from homeassistant.const import ATTR_SUPPORTED_FEATURES
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.util import slugify
@@ -18,6 +24,8 @@ from .const import DATA_RELAY, DUCK_URL_PATH
 from .rules import Rule, by_priority, decide, variables
 
 _LOGGER = logging.getLogger(__name__)
+
+DUCKED_VOLUME = 0.3
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +57,7 @@ class Relay:
         self._intent_output: dict[str, dict[str, Any] | None] = {}
         self._acknowledged: set[str] = set()
         self._ducks: dict[str, asyncio.Task[str | None]] = {}
+        self._lowered: dict[str, float] = {}
         self._duckers: dict[str, set[str]] = {}
 
     @callback
@@ -133,6 +142,8 @@ class Relay:
             return  # Ducked already, for another satellite.
         if sonos.is_sonos(self.hass, route.target):
             self._start_duck(route)
+        else:
+            self._lower_volume(route.target)
 
     def _leave(self, target: str, satellite: str) -> bool:
         """Take the satellite off the target's duckers, return whether others remain."""
@@ -217,7 +228,31 @@ class Relay:
             play(), name=f"tts_relay.duck[{route.target}]"
         )
 
+    def _lower_volume(self, target: str) -> None:
+        state = self.hass.states.get(target)
+        if state is None or state.state != MediaPlayerState.PLAYING or target in self._lowered:
+            return
+        volume = state.attributes.get(ATTR_MEDIA_VOLUME_LEVEL)
+        features = state.attributes.get(ATTR_SUPPORTED_FEATURES, 0)
+        if volume is None or not features & MediaPlayerEntityFeature.VOLUME_SET:
+            return
+        self._lowered[target] = volume
+        self._run(self._set_volume(target, volume * DUCKED_VOLUME), "duck", target)
+
+    async def _set_volume(self, target: str, volume: float) -> None:
+        try:
+            await self.hass.services.async_call(
+                "media_player",
+                "volume_set",
+                {"entity_id": target, ATTR_MEDIA_VOLUME_LEVEL: volume},
+                blocking=True,
+            )
+        except Exception:
+            _LOGGER.exception("Setting the volume of %s failed", target)
+
     async def _clear_duck(self, target: str) -> None:
+        if (volume := self._lowered.pop(target, None)) is not None:
+            await self._set_volume(target, volume)
         task = self._ducks.pop(target, None)
         if task is None:
             return
@@ -227,6 +262,7 @@ class Relay:
 
     async def _replace_duck(self, route: Route, url: str, others: bool = False) -> None:
         # Cancel first, or the reply would wait for the duck clip to end.
+        # Other speakers get their volume back too, or the reply would be quiet.
         await self._clear_duck(route.target)
         await self.announce(route, url)
         if others and sonos.is_sonos(self.hass, route.target):

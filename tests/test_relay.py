@@ -114,6 +114,51 @@ async def test_duck_can_be_turned_off(hass, players):
     await run(hass, relay, ev(PipelineEventType.RUN_START), tts_end())
     assert players.urls() == [BASE_URL + TTS]
 
+    del players.sonos[SPEAKER]
+    playing(hass)
+    await run(hass, relay, ev(PipelineEventType.RUN_START), tts_end())
+    assert players.volumes == []
+
+
+def playing(hass, volume=0.5, state="playing", features=4):
+    hass.states.async_set(SPEAKER, state, {"volume_level": volume, "supported_features": features})
+
+
+async def test_other_players_duck_by_volume(hass, players):
+    playing(hass)
+    relay = await setup_relay(
+        hass, players, [{"name": "Living room", "satellites": [SAT], "target": SPEAKER}]
+    )
+    await run(hass, relay, ev(PipelineEventType.RUN_START))
+    assert players.volumes == [(SPEAKER, 0.15)]
+    assert players.played == []
+
+    await run(hass, relay, ev(PipelineEventType.STT_VAD_END))
+    assert players.volumes == [(SPEAKER, 0.15), (SPEAKER, 0.5)]
+
+    await run(hass, relay, tts_end(), ev(PipelineEventType.RUN_END))
+    assert len(players.volumes) == 2
+    assert players.urls() == [BASE_URL + TTS]
+
+
+async def test_volume_restored_before_the_reply(hass, players):
+    playing(hass)
+    relay = await setup_relay(
+        hass, players, [{"name": "Living room", "satellites": [SAT], "target": SPEAKER}]
+    )
+    await run(hass, relay, ev(PipelineEventType.RUN_START), tts_end())
+    assert players.volumes == [(SPEAKER, 0.15), (SPEAKER, 0.5)]
+
+
+async def test_no_volume_duck_when_idle_or_unsupported(hass, players):
+    relay = await setup_relay(
+        hass, players, [{"name": "Living room", "satellites": [SAT], "target": SPEAKER}]
+    )
+    for kwargs in ({"state": "idle"}, {"features": 0}):
+        playing(hass, **kwargs)
+        await run(hass, relay, ev(PipelineEventType.RUN_START), ev(PipelineEventType.RUN_END))
+    assert players.volumes == []
+
 
 async def test_wraps_the_satellite_entity(hass, players):
     from homeassistant.components.assist_satellite.entity import AssistSatelliteEntity
@@ -165,6 +210,19 @@ async def test_serves_duck_clip(hass, players):
 
 BOTH = {"name": "Living room", "satellites": [SAT, OTHER_SAT], "target": SPEAKER}
 DUCK = BASE_URL + "/tts_relay/duck.mp3"
+
+
+async def test_shared_speaker_stays_ducked_until_the_last_satellite_is_done(hass, players):
+    playing(hass)
+    relay = await setup_relay(hass, players, [BOTH])
+    await run(hass, relay, ev(PipelineEventType.RUN_START))
+    await run(hass, relay, ev(PipelineEventType.RUN_START), satellite=OTHER_SAT)
+    assert players.volumes == [(SPEAKER, 0.15)]
+
+    await run(hass, relay, ev(PipelineEventType.STT_VAD_END))
+    assert players.volumes == [(SPEAKER, 0.15)]
+    await run(hass, relay, ev(PipelineEventType.STT_VAD_END), satellite=OTHER_SAT)
+    assert players.volumes == [(SPEAKER, 0.15), (SPEAKER, 0.5)]
 
 
 async def test_shared_sonos_keeps_one_duck_clip(hass, players):
