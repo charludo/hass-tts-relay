@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from functools import wraps
 from typing import Any
 
 from homeassistant.components.assist_pipeline import PipelineEvent, PipelineEventType
-from homeassistant.components.assist_satellite.entity import AssistSatelliteEntity
+from homeassistant.components.assist_satellite.entity import (
+    AssistSatelliteAnnouncement,
+    AssistSatelliteEntity,
+)
 from homeassistant.components.media_player import (
     ATTR_MEDIA_VOLUME_LEVEL,
     MediaPlayerEntityFeature,
@@ -26,6 +30,8 @@ from .rules import Rule, by_priority, decide, variables
 _LOGGER = logging.getLogger(__name__)
 
 DUCKED_VOLUME = 0.3
+# The same announcement for several satellites of one route plays once.
+ANNOUNCEMENT_REPEAT_WINDOW = 5.0  # seconds
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +42,7 @@ class Route:
     volume: float | None = None
     duck: bool = True
     rules: tuple[str, ...] | None = None  # None: the rules that are on by default
+    announcements: bool = True
     source: str = "ui"
 
     @property
@@ -59,6 +66,7 @@ class Relay:
         self._ducks: dict[str, asyncio.Task[str | None]] = {}
         self._lowered: dict[str, float] = {}
         self._duckers: dict[str, set[str]] = {}
+        self._announced: dict[tuple[str, str], float] = {}  # (target, what) -> when
 
     @callback
     def add_route(self, route: Route) -> CALLBACK_TYPE:
@@ -133,6 +141,27 @@ class Relay:
                 else:
                     others = self._leave(route.target, satellite)
                     self._run(self._replace_duck(route, url, others), "reply", route.target)
+
+    @callback
+    def handle_announcement(
+        self, satellite: str, announcement: AssistSatelliteAnnouncement
+    ) -> None:
+        route = self._by_satellite.get(satellite)
+        if route is None or not route.announcements:
+            return
+        now = time.monotonic()
+        self._announced = {
+            key: when
+            for key, when in self._announced.items()
+            if now - when < ANNOUNCEMENT_REPEAT_WINDOW
+        }
+        # Satellites may speak it in different voices, so the text identifies it.
+        key = (route.target, announcement.message or announcement.original_media_id)
+        if key in self._announced:
+            return
+        self._announced[key] = now
+        if (url := self._absolute(announcement.media_id)) is not None:
+            self._run(self.announce(route, url), "announcement", route.target)
 
     def _duck(self, route: Route, satellite: str) -> None:
         duckers = self._duckers.setdefault(route.target, set())
@@ -289,6 +318,7 @@ class Relay:
 def install() -> None:
     """Wrap the satellite entity."""
     _wrap_pipeline_events()
+    _wrap_announcements()
 
 
 def _relay_for(entity: AssistSatelliteEntity) -> Relay | None:
@@ -314,3 +344,26 @@ def _wrap_pipeline_events() -> None:
 
     on_pipeline_event._tts_relay = True  # type: ignore[attr-defined]
     AssistSatelliteEntity._internal_on_pipeline_event = on_pipeline_event
+
+
+def _wrap_announcements() -> None:
+    original: Callable[..., Coroutine[Any, Any, AssistSatelliteAnnouncement]] = (
+        AssistSatelliteEntity._resolve_announcement_media_id
+    )
+    if getattr(original, "_tts_relay", False):
+        return
+
+    @wraps(original)
+    async def resolve_announcement(self, *args: Any, **kwargs: Any) -> AssistSatelliteAnnouncement:
+        announcement = await original(self, *args, **kwargs)
+        # A satellite already announcing refuses this one right after.
+        if (relay := _relay_for(self)) is None or self._is_announcing:
+            return announcement
+        try:
+            relay.handle_announcement(self.entity_id, announcement)
+        except Exception:
+            _LOGGER.exception("Relaying an announcement for %s failed", self.entity_id)
+        return announcement
+
+    resolve_announcement._tts_relay = True  # type: ignore[attr-defined]
+    AssistSatelliteEntity._resolve_announcement_media_id = resolve_announcement

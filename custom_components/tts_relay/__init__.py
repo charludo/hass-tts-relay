@@ -16,6 +16,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
+    CONF_ANNOUNCEMENTS,
     CONF_DUCK,
     CONF_NAME,
     CONF_ROUTES,
@@ -26,6 +27,7 @@ from .const import (
     CONF_VOLUME,
     CONF_YAML,
     DATA_RELAY,
+    DEFAULT_ANNOUNCEMENTS,
     DEFAULT_DUCK,
     DOMAIN,
     DUCK_URL_PATH,
@@ -64,6 +66,7 @@ ROUTE_SCHEMA = vol.Schema(
         vol.Optional(CONF_VOLUME): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
         vol.Optional(CONF_DUCK, default=DEFAULT_DUCK): cv.boolean,
         vol.Optional(CONF_RULES): [cv.slug],
+        vol.Optional(CONF_ANNOUNCEMENTS, default=DEFAULT_ANNOUNCEMENTS): cv.boolean,
     }
 )
 
@@ -96,6 +99,7 @@ def _route(settings: Mapping[str, Any], source: str) -> Route:
         volume=settings.get(CONF_VOLUME),
         duck=settings.get(CONF_DUCK, DEFAULT_DUCK),
         rules=None if rules is None else tuple(rules),
+        announcements=settings.get(CONF_ANNOUNCEMENTS, DEFAULT_ANNOUNCEMENTS),
         source=source,
     )
 
@@ -181,6 +185,7 @@ def _yaml_route_data(route: Route) -> dict[str, Any]:
         CONF_SATELLITES: list(route.satellites),
         CONF_TARGET: route.target,
         CONF_DUCK: route.duck,
+        CONF_ANNOUNCEMENTS: route.announcements,
         CONF_YAML: True,
     }
     if route.volume is not None:

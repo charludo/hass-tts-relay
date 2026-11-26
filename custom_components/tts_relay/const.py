@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 DOMAIN = "tts_relay"
 
+CONF_ANNOUNCEMENTS = "announcements"
 CONF_NAME = "name"
 CONF_SATELLITES = "satellites"
 CONF_TARGET = "target"
@@ -22,6 +23,7 @@ CONF_YAML = "yaml"
 SUBENTRY_ROUTE = "route"
 
 DEFAULT_DUCK = True
+DEFAULT_ANNOUNCEMENTS = True
 
 SERVICE_STOP = "stop"
 SERVICE_RELOAD = "reload"

@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Set up TTS Relay",
-        "description": "TTS Relay plays a satellite's voice replies to a media player. A route relays one or more satellites to one speaker. You can add routes now or later, from the integration's page.",
+        "description": "TTS Relay plays a satellite's voice replies and announcements to a media player. A route relays one or more satellites to one speaker. You can add routes now or later, from the integration's page.",
         "menu_options": {
           "add_route": "Add a route now",
           "finish": "Skip for now"
@@ -11,13 +11,14 @@
       },
       "add_route": {
         "title": "Add a route",
-        "description": "Relay voice replies of one or more satellites to a media player.\n\nReply rules allow you to further alter responses:\n{rules}",
+        "description": "Relay voice replies and announcements of one or more satellites to a media player.\n\nReply rules allow you to further alter responses:\n{rules}",
         "data": {
           "name": "Name",
           "satellites": "Satellites",
           "target": "Speaker",
           "volume": "Reply volume",
           "duck": "Lower volume while listening",
+          "announcements": "Relay announcements",
           "rules": "Reply rules"
         },
         "data_description": {
@@ -26,6 +27,7 @@
           "target": "Media player that plays the replies. Only players that support announcements are offered. For any other, add it to Music Assistant and pick the Music Assistant player.",
           "volume": "(Sonos only) Volume of the replies. Leave empty to use the speaker's set volume.",
           "duck": "Lower whatever plays on the speaker from the start of a command until you stop speaking.",
+          "announcements": "Also play the satellite's announcements on the speaker. Reply rules don't apply to these.",
           "rules": "Rules for further altering responses. Custom rules should go into <config>/tts_relay/rules/"
         }
       }
@@ -45,13 +47,14 @@
       "step": {
         "user": {
           "title": "Add a route",
-          "description": "Relay voice replies of one or more satellites to a media player.\n\nReply rules allow you to further alter responses:\n{rules}",
+          "description": "Relay voice replies and announcements of one or more satellites to a media player.\n\nReply rules allow you to further alter responses:\n{rules}",
           "data": {
             "name": "Name",
             "satellites": "Satellites",
             "target": "Speaker",
             "volume": "Reply volume",
             "duck": "Lower volume while listening",
+            "announcements": "Relay announcements",
             "rules": "Reply rules"
           },
           "data_description": {
@@ -60,18 +63,20 @@
             "target": "Media player that plays the replies. Only players that support announcements are offered. For any other, add it to Music Assistant and pick the Music Assistant player.",
             "volume": "(Sonos only) Volume of the replies. Leave empty to use the speaker's set volume.",
             "duck": "Lower whatever plays on the speaker from the start of a command until you stop speaking.",
+            "announcements": "Also play the satellite's announcements on the speaker. Reply rules don't apply to these.",
             "rules": "Rules for further altering responses. Custom rules should go into <config>/tts_relay/rules/"
           }
         },
         "reconfigure": {
           "title": "Change {name}",
-          "description": "Relay voice replies of one or more satellites on a media player.\n\nReply rules allow you to further alter responses:\n{rules}",
+          "description": "Relay voice replies and announcements of one or more satellites on a media player.\n\nReply rules allow you to further alter responses:\n{rules}",
           "data": {
             "name": "Name",
             "satellites": "Satellites",
             "target": "Speaker",
             "volume": "Reply volume",
             "duck": "Lower volume while listening",
+            "announcements": "Relay announcements",
             "rules": "Reply rules"
           },
           "data_description": {
@@ -80,6 +85,7 @@
             "target": "Media player that plays the replies. Only players that support announcements are offered. For any other, add it to Music Assistant and pick the Music Assistant player.",
             "volume": "(Sonos only) Volume of the replies. Leave empty to use the speaker's set volume.",
             "duck": "Lower whatever plays on the speaker from the start of a command until you stop speaking.",
+            "announcements": "Also play the satellite's announcements on the speaker. Reply rules don't apply to these.",
             "rules": "Rules for further altering responses. Custom rules should go into <config>/tts_relay/rules/"
           }
         }

@@ -16,6 +16,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_ANNOUNCEMENTS,
     CONF_DUCK,
     CONF_NAME,
     CONF_RULES,
@@ -24,6 +25,7 @@ from .const import (
     CONF_VOLUME,
     CONF_YAML,
     DATA_RELAY,
+    DEFAULT_ANNOUNCEMENTS,
     DEFAULT_DUCK,
     DOMAIN,
     SUBENTRY_ROUTE,
@@ -77,6 +79,10 @@ def _settings_schema(hass: HomeAssistant, current: Mapping[str, Any]) -> dict:
         vol.Optional(CONF_DUCK, default=current.get(CONF_DUCK, DEFAULT_DUCK)): (
             selector.BooleanSelector()
         ),
+        vol.Optional(
+            CONF_ANNOUNCEMENTS,
+            default=current.get(CONF_ANNOUNCEMENTS, DEFAULT_ANNOUNCEMENTS),
+        ): selector.BooleanSelector(),
         vol.Optional(CONF_RULES, default=chosen_rules): selector.SelectSelector(
             selector.SelectSelectorConfig(
                 options=[
@@ -109,6 +115,7 @@ def _route_data(form: Mapping[str, Any]) -> dict[str, Any]:
         CONF_SATELLITES: list(form.get(CONF_SATELLITES, [])),
         CONF_TARGET: form[CONF_TARGET],
         CONF_DUCK: form.get(CONF_DUCK, DEFAULT_DUCK),
+        CONF_ANNOUNCEMENTS: form.get(CONF_ANNOUNCEMENTS, DEFAULT_ANNOUNCEMENTS),
         CONF_RULES: list(form.get(CONF_RULES, [])),
     }
     if form.get(CONF_VOLUME) is not None:

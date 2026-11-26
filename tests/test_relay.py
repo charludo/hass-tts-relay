@@ -462,3 +462,55 @@ async def test_ui_texts_load(hass, players):
     assert texts["component.tts_relay.config.step.add_route.data.satellites"] == "Satellites"
     texts = await async_get_translations(hass, "en", "config_subentries", ["tts_relay"])
     assert texts["component.tts_relay.config_subentries.route.initiate_flow.user"] == "Add route"
+
+
+def satellite_entity(hass, entity_id):
+    from homeassistant.components.assist_satellite.entity import AssistSatelliteEntity
+
+    class Satellite(AssistSatelliteEntity):
+        def on_pipeline_event(self, event):
+            pass
+
+        def async_get_configuration(self):
+            raise NotImplementedError
+
+        async def async_set_configuration(self, config):
+            raise NotImplementedError
+
+    satellite = Satellite()
+    satellite.hass = hass
+    satellite.entity_id = entity_id
+    return satellite
+
+
+async def announce(hass, satellite, message="Dinner is ready", media="/local/dinner.mp3"):
+    await satellite._resolve_announcement_media_id(
+        message, media, preannounce_media_id="/local/chime.mp3"
+    )
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+
+async def test_relays_announcements_without_the_chime(hass, players):
+    await setup_relay(hass, players, [{**BOTH, "volume": 0.2}])
+    players.sonos[SPEAKER] = FakeSonos()
+    await announce(hass, satellite_entity(hass, SAT))
+    assert players.urls() == [BASE_URL + "/local/dinner.mp3"]
+    assert players.played[0]["extra"] == {"volume": 20}
+
+
+async def test_an_announcement_to_a_whole_route_plays_once(hass, players):
+    await setup_relay(hass, players, [BOTH])
+    await announce(hass, satellite_entity(hass, SAT))
+    await announce(hass, satellite_entity(hass, OTHER_SAT))
+    await announce(hass, satellite_entity(hass, OTHER_SAT), message="Other", media="/local/o.mp3")
+    assert players.urls() == [BASE_URL + "/local/dinner.mp3", BASE_URL + "/local/o.mp3"]
+
+
+async def test_announcements_can_be_left_on_the_satellite(hass, players):
+    await setup_relay(hass, players, [{**BOTH, "announcements": False}])
+    await announce(hass, satellite_entity(hass, SAT))
+    await announce(hass, satellite_entity(hass, "assist_satellite.unrouted"))
+    busy = satellite_entity(hass, SAT)
+    busy._is_announcing = True
+    await announce(hass, busy, message="Busy")
+    assert players.played == []
