@@ -603,3 +603,18 @@ async def test_flags_tts_announcements_sonos_cant_play(hass, players):
     relay.handle_announcement(SAT, announcement("Hi", "/api/tts_proxy/abc.flac", "tts"))
     assert list(reply_issues(hass)) == [f"reply_format_{SAT}"]
     await hass.async_block_till_done(wait_background_tasks=True)
+
+
+async def test_music_assistant_plays_replies_without_its_chime(hass, players):
+    from homeassistant.helpers import entity_registry as er
+
+    target = er.async_get(hass).async_get_or_create(
+        "media_player", "music_assistant", "living-room", suggested_object_id="ma_living_room"
+    )
+    relay = await setup_relay(
+        hass,
+        players,
+        [{"name": "Living room", "satellites": [SAT], "target": target.entity_id}],
+    )
+    await run(hass, relay, tts_end())
+    assert players.played[0]["extra"] == {"use_pre_announce": False}

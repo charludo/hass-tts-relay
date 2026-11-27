@@ -22,6 +22,7 @@ from homeassistant.components.media_player import (
 )
 from homeassistant.const import ATTR_SUPPORTED_FEATURES
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.util import slugify
@@ -281,10 +282,17 @@ class Relay:
         }
         if route.volume is not None and sonos.is_sonos(self.hass, route.target):
             data["extra"] = {"volume": round(route.volume * 100)}
+        elif self._is_music_assistant(route.target):
+            # Music Assistant plays a chime before announcements by default.
+            data["extra"] = {"use_pre_announce": False}
         try:
             await self.hass.services.async_call("media_player", "play_media", data, blocking=True)
         except Exception:
             _LOGGER.exception("Playing %s on %s failed", url, route.target)
+
+    def _is_music_assistant(self, entity_id: str) -> bool:
+        entry = er.async_get(self.hass).async_get(entity_id)
+        return entry is not None and entry.platform == "music_assistant"
 
     def _start_duck(self, route: Route) -> None:
         url = self._absolute(DUCK_URL_PATH)
