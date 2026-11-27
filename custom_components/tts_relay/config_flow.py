@@ -21,12 +21,14 @@ from .const import (
     CONF_NAME,
     CONF_RULES,
     CONF_SATELLITES,
+    CONF_SILENCE,
     CONF_TARGET,
     CONF_VOLUME,
     CONF_YAML,
     DATA_RELAY,
     DEFAULT_ANNOUNCEMENTS,
     DEFAULT_DUCK,
+    DEFAULT_SILENCE,
     DOMAIN,
     SUBENTRY_ROUTE,
 )
@@ -83,6 +85,9 @@ def _settings_schema(hass: HomeAssistant, current: Mapping[str, Any]) -> dict:
             CONF_ANNOUNCEMENTS,
             default=current.get(CONF_ANNOUNCEMENTS, DEFAULT_ANNOUNCEMENTS),
         ): selector.BooleanSelector(),
+        vol.Optional(CONF_SILENCE, default=current.get(CONF_SILENCE, DEFAULT_SILENCE)): (
+            selector.BooleanSelector()
+        ),
         vol.Optional(CONF_RULES, default=chosen_rules): selector.SelectSelector(
             selector.SelectSelectorConfig(
                 options=[
@@ -116,6 +121,7 @@ def _route_data(form: Mapping[str, Any]) -> dict[str, Any]:
         CONF_TARGET: form[CONF_TARGET],
         CONF_DUCK: form.get(CONF_DUCK, DEFAULT_DUCK),
         CONF_ANNOUNCEMENTS: form.get(CONF_ANNOUNCEMENTS, DEFAULT_ANNOUNCEMENTS),
+        CONF_SILENCE: form.get(CONF_SILENCE, DEFAULT_SILENCE),
         CONF_RULES: list(form.get(CONF_RULES, [])),
     }
     if form.get(CONF_VOLUME) is not None:

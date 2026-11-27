@@ -30,6 +30,7 @@ from homeassistant.util import slugify
 from . import sonos, volume
 from .const import DATA_RELAY, DOMAIN, DUCK_URL_PATH, ISSUE_REPLY_FORMAT, PE_DOCS_URL
 from .rules import Rule, by_priority, decide, variables
+from .silence import Silencer
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ class Route:
     duck: bool = True
     rules: tuple[str, ...] | None = None  # None: the rules that are on by default
     announcements: bool = True
+    silence: bool = False  # mute the satellites' own speakers while they reply
     source: str = "ui"
 
     @property
@@ -74,6 +76,7 @@ class Relay:
         self._duckers: dict[str, set[str]] = {}
         self._announced: dict[tuple[str, str], float] = {}  # (target, what) -> when
         self._bad_format: set[str] = set()  # satellites already warned about
+        self.silencer = Silencer(hass)
 
     @callback
     def add_route(self, route: Route) -> CALLBACK_TYPE:
@@ -119,6 +122,9 @@ class Relay:
             case PipelineEventType.RUN_START:
                 self._intent_output.pop(satellite, None)
                 self._acknowledged.discard(satellite)
+                if route.silence:
+                    # Long before the satellite gets the reply to play.
+                    self._run(self.silencer.silence(satellite, route.target), "silence", satellite)
                 if route.duck:
                     self._duck(route, satellite)
             case (
@@ -211,6 +217,12 @@ class Relay:
                 "format": extension.removeprefix(".").upper(),
             },
         )
+
+    async def silence_announcement(self, satellite: str) -> None:
+        """Mute the satellite's own speaker for an announcement we relay."""
+        route = self._by_satellite.get(satellite)
+        if route is not None and route.announcements and route.silence:
+            await self.silencer.silence(satellite, route.target)
 
     def _duck(self, route: Route, satellite: str) -> None:
         duckers = self._duckers.setdefault(route.target, set())
@@ -433,6 +445,8 @@ def _wrap_announcements() -> None:
             return announcement
         try:
             relay.handle_announcement(self.entity_id, announcement)
+            # Waited for: the satellite starts playing as soon as this returns.
+            await relay.silence_announcement(self.entity_id)
         except Exception:
             _LOGGER.exception("Relaying an announcement for %s failed", self.entity_id)
         return announcement

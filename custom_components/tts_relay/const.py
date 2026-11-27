@@ -12,6 +12,7 @@ DOMAIN = "tts_relay"
 CONF_ANNOUNCEMENTS = "announcements"
 CONF_NAME = "name"
 CONF_SATELLITES = "satellites"
+CONF_SILENCE = "silence"
 CONF_TARGET = "target"
 CONF_VOLUME = "volume"
 CONF_DUCK = "duck"
@@ -24,6 +25,7 @@ SUBENTRY_ROUTE = "route"
 
 DEFAULT_DUCK = True
 DEFAULT_ANNOUNCEMENTS = True
+DEFAULT_SILENCE = False
 
 SERVICE_STOP = "stop"
 SERVICE_RELOAD = "reload"

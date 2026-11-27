@@ -22,6 +22,7 @@ from .const import (
     CONF_ROUTES,
     CONF_RULES,
     CONF_SATELLITES,
+    CONF_SILENCE,
     CONF_SOUNDS,
     CONF_TARGET,
     CONF_VOLUME,
@@ -29,6 +30,7 @@ from .const import (
     DATA_RELAY,
     DEFAULT_ANNOUNCEMENTS,
     DEFAULT_DUCK,
+    DEFAULT_SILENCE,
     DOMAIN,
     DUCK_URL_PATH,
     SERVICE_RELOAD,
@@ -67,6 +69,7 @@ ROUTE_SCHEMA = vol.Schema(
         vol.Optional(CONF_DUCK, default=DEFAULT_DUCK): cv.boolean,
         vol.Optional(CONF_RULES): [cv.slug],
         vol.Optional(CONF_ANNOUNCEMENTS, default=DEFAULT_ANNOUNCEMENTS): cv.boolean,
+        vol.Optional(CONF_SILENCE, default=DEFAULT_SILENCE): cv.boolean,
     }
 )
 
@@ -100,6 +103,7 @@ def _route(settings: Mapping[str, Any], source: str) -> Route:
         duck=settings.get(CONF_DUCK, DEFAULT_DUCK),
         rules=None if rules is None else tuple(rules),
         announcements=settings.get(CONF_ANNOUNCEMENTS, DEFAULT_ANNOUNCEMENTS),
+        silence=settings.get(CONF_SILENCE, DEFAULT_SILENCE),
         source=source,
     )
 
@@ -115,6 +119,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     relay = hass.data[DATA_RELAY] = Relay(hass)
     install()
 
+    await relay.silencer.async_load()
     await hass.async_add_executor_job(_create_user_dirs, hass)
     await hass.http.async_register_static_paths(
         [
@@ -186,6 +191,7 @@ def _yaml_route_data(route: Route) -> dict[str, Any]:
         CONF_TARGET: route.target,
         CONF_DUCK: route.duck,
         CONF_ANNOUNCEMENTS: route.announcements,
+        CONF_SILENCE: route.silence,
         CONF_YAML: True,
     }
     if route.volume is not None:
