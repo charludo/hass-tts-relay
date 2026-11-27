@@ -19,6 +19,7 @@ CONF_DUCK = "duck"
 CONF_ROUTES = "routes"
 CONF_RULES = "rules"
 CONF_SOUNDS = "sounds"
+CONF_STREAM = "stream"
 CONF_YAML = "yaml"
 
 SUBENTRY_ROUTE = "route"
@@ -26,6 +27,7 @@ SUBENTRY_ROUTE = "route"
 DEFAULT_DUCK = True
 DEFAULT_ANNOUNCEMENTS = True
 DEFAULT_SILENCE = False
+DEFAULT_STREAM = False
 
 SERVICE_STOP = "stop"
 SERVICE_RELOAD = "reload"

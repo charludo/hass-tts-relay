@@ -51,6 +51,7 @@ class Route:
     rules: tuple[str, ...] | None = None  # None: the rules that are on by default
     announcements: bool = True
     silence: bool = False  # mute the satellites' own speakers while they reply
+    stream: bool = False  # play streamed (LLM) replies while they're being written
     source: str = "ui"
 
     @property
@@ -77,6 +78,8 @@ class Relay:
         self._announced: dict[tuple[str, str], float] = {}  # (target, what) -> when
         self._bad_format: set[str] = set()  # satellites already warned about
         self.silencer = Silencer(hass)
+        self._stream_url: dict[str, str] = {}  # the run's reply, if it may stream
+        self._streamed: set[str] = set()  # satellites whose reply plays already
 
     @callback
     def add_route(self, route: Route) -> CALLBACK_TYPE:
@@ -122,6 +125,12 @@ class Relay:
             case PipelineEventType.RUN_START:
                 self._intent_output.pop(satellite, None)
                 self._acknowledged.discard(satellite)
+                self._streamed.discard(satellite)
+                tts_output = data.get("tts_output") or {}
+                if route.stream and tts_output.get("stream_response") and tts_output.get("url"):
+                    self._stream_url[satellite] = tts_output["url"]
+                else:
+                    self._stream_url.pop(satellite, None)
                 if route.silence:
                     # Long before the satellite gets the reply to play.
                     self._run(self.silencer.silence(satellite, route.target), "silence", satellite)
@@ -134,6 +143,13 @@ class Relay:
                 | PipelineEventType.ERROR
             ):
                 self._release(route.target, satellite)
+            case PipelineEventType.INTENT_PROGRESS:
+                # The agent has written enough that Home Assistant starts speaking
+                # before it's done. The satellite starts playing now, too.
+                if data.get("tts_start_streaming") and (
+                    tts_url := self._stream_url.pop(satellite, None)
+                ):
+                    self._stream(route, satellite, tts_url)
             case PipelineEventType.INTENT_END:
                 self._intent_output[satellite] = data.get("intent_output")
             case PipelineEventType.TTS_START:
@@ -142,6 +158,13 @@ class Relay:
                 else:
                     self._acknowledged.discard(satellite)
             case PipelineEventType.TTS_END:
+                self._stream_url.pop(satellite, None)
+                if satellite in self._streamed:
+                    # Playing since the agent started writing.
+                    self._streamed.discard(satellite)
+                    self._intent_output.pop(satellite, None)
+                    self._acknowledged.discard(satellite)
+                    return
                 tts_url = (data.get("tts_output") or {}).get("url")
                 self._check_format(route, satellite, tts_url)
                 url = self._reply_url(
@@ -152,11 +175,27 @@ class Relay:
                     acknowledged=satellite in self._acknowledged,
                 )
                 self._acknowledged.discard(satellite)
-                if url is None:
-                    self._release(route.target, satellite)
-                else:
-                    others = self._leave(route.target, satellite)
-                    self._run(self._replace_duck(route, url, others), "reply", route.target)
+                self._play_reply(route, satellite, url)
+
+    def _stream(self, route: Route, satellite: str, tts_url: str) -> None:
+        """Play the reply while the agent is still writing it, if the rules allow.
+
+        The rules can't see the response yet. If one decides anyway, e.g. on the
+        time of day, we wait for the response and let them decide as usual.
+        """
+        url = self._reply_url(route, satellite, None, tts_url, acknowledged=False)
+        if url is None or url != self._absolute(tts_url):
+            return
+        self._check_format(route, satellite, tts_url)
+        self._streamed.add(satellite)
+        self._play_reply(route, satellite, url)
+
+    def _play_reply(self, route: Route, satellite: str, url: str | None) -> None:
+        if url is None:
+            self._release(route.target, satellite)
+        else:
+            others = self._leave(route.target, satellite)
+            self._run(self._replace_duck(route, url, others), "reply", route.target)
 
     @callback
     def handle_announcement(

@@ -24,6 +24,7 @@ from .const import (
     CONF_SATELLITES,
     CONF_SILENCE,
     CONF_SOUNDS,
+    CONF_STREAM,
     CONF_TARGET,
     CONF_VOLUME,
     CONF_YAML,
@@ -31,6 +32,7 @@ from .const import (
     DEFAULT_ANNOUNCEMENTS,
     DEFAULT_DUCK,
     DEFAULT_SILENCE,
+    DEFAULT_STREAM,
     DOMAIN,
     DUCK_URL_PATH,
     SERVICE_RELOAD,
@@ -70,6 +72,7 @@ ROUTE_SCHEMA = vol.Schema(
         vol.Optional(CONF_RULES): [cv.slug],
         vol.Optional(CONF_ANNOUNCEMENTS, default=DEFAULT_ANNOUNCEMENTS): cv.boolean,
         vol.Optional(CONF_SILENCE, default=DEFAULT_SILENCE): cv.boolean,
+        vol.Optional(CONF_STREAM, default=DEFAULT_STREAM): cv.boolean,
     }
 )
 
@@ -104,6 +107,7 @@ def _route(settings: Mapping[str, Any], source: str) -> Route:
         rules=None if rules is None else tuple(rules),
         announcements=settings.get(CONF_ANNOUNCEMENTS, DEFAULT_ANNOUNCEMENTS),
         silence=settings.get(CONF_SILENCE, DEFAULT_SILENCE),
+        stream=settings.get(CONF_STREAM, DEFAULT_STREAM),
         source=source,
     )
 
@@ -192,6 +196,7 @@ def _yaml_route_data(route: Route) -> dict[str, Any]:
         CONF_DUCK: route.duck,
         CONF_ANNOUNCEMENTS: route.announcements,
         CONF_SILENCE: route.silence,
+        CONF_STREAM: route.stream,
         CONF_YAML: True,
     }
     if route.volume is not None:

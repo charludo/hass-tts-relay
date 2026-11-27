@@ -90,6 +90,7 @@ Each route relays one or more satellites to one speaker.
 | `duck` | `true` | Duck the normal speaker output while you are saying a voice command. See [Ducking](#-ducking). |
 | `announcements` | `true` | Also play the satellite's announcements on the speaker. Reply rules don't apply to these. |
 | `silence` | `false` | Mute the satellites' own speakers while they reply. See [Silence the satellite](#silence-the-satellite). |
+| `stream` | `false` | Start long replies from LLM agents while they're still being written. See [Start long replies early](#start-long-replies-early). |
 | `rules` | `["intent_sounds"]` | Which [reply rules](#-reply-rules) apply. |
 
 #### YAML configuration
@@ -113,6 +114,7 @@ tts_relay:
       duck: true # see Ducking below
       announcements: true
       silence: false # see Silence the satellite below
+      stream: false # see Start long replies early below
       rules: # optional, see Reply rules below
         - intent_sounds
         - quiet_on_no_match
@@ -153,6 +155,17 @@ Then point the satellite at it, e.g. for LVA add:
 ```sh
 --audio-output-device alsa/plughw:CARD=Dummy
 ```
+
+#### Start long replies early
+
+Conversation agents that stream their answer, like most LLM ones, start talking while they're still writing.
+Once a reply is long enough, Home Assistant starts speaking it, and the satellite starts playing it.
+By default, TTS Relay waits for the whole answer, so a long reply starts on the speaker a few seconds later than on the satellite.
+Turn on the route's `stream` option to start it on the speaker at the same moment.
+
+The problem with this is that reply rules can't see the response yet when the reply starts.
+If a rule doesn't rely on the response object, for example because it drops all replies at night time, TTS Relay waits for the whole answer instead, and the rules decide as usual.
+Short answers and answers from agents that don't stream are played as usual.
 
 &#160;
 
