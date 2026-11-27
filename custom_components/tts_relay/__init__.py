@@ -17,6 +17,7 @@ from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     CONF_ANNOUNCEMENTS,
+    CONF_CONVERT_TO_WAV,
     CONF_DUCK,
     CONF_NAME,
     CONF_ROUTES,
@@ -30,6 +31,7 @@ from .const import (
     CONF_YAML,
     DATA_RELAY,
     DEFAULT_ANNOUNCEMENTS,
+    DEFAULT_CONVERT_TO_WAV,
     DEFAULT_DUCK,
     DEFAULT_SILENCE,
     DEFAULT_STREAM,
@@ -42,7 +44,7 @@ from .const import (
 )
 from .relay import Relay, Route, install, route_id
 from .rules import async_load_rules, async_load_sounds, user_dir
-from .silence import ReplyView, SilentView, async_ffmpeg_available
+from .silence import ReplyView, SilentView, WavView, async_ffmpeg_available
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -74,6 +76,7 @@ ROUTE_SCHEMA = vol.Schema(
         vol.Optional(CONF_ANNOUNCEMENTS, default=DEFAULT_ANNOUNCEMENTS): cv.boolean,
         vol.Optional(CONF_SILENCE, default=DEFAULT_SILENCE): cv.boolean,
         vol.Optional(CONF_STREAM, default=DEFAULT_STREAM): cv.boolean,
+        vol.Optional(CONF_CONVERT_TO_WAV, default=DEFAULT_CONVERT_TO_WAV): cv.boolean,
     }
 )
 
@@ -109,6 +112,7 @@ def _route(settings: Mapping[str, Any], source: str) -> Route:
         announcements=settings.get(CONF_ANNOUNCEMENTS, DEFAULT_ANNOUNCEMENTS),
         silence=settings.get(CONF_SILENCE, DEFAULT_SILENCE),
         stream=settings.get(CONF_STREAM, DEFAULT_STREAM),
+        convert_to_wav=settings.get(CONF_CONVERT_TO_WAV, DEFAULT_CONVERT_TO_WAV),
         source=source,
     )
 
@@ -135,6 +139,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     relay.set_ffmpeg(await async_ffmpeg_available(hass))
     hass.http.register_view(ReplyView(hass))
     hass.http.register_view(SilentView(hass))
+    hass.http.register_view(WavView(hass))
 
     async def load_rules_and_sounds() -> None:
         relay.rules = await async_load_rules(hass)
@@ -200,6 +205,7 @@ def _yaml_route_data(route: Route) -> dict[str, Any]:
         CONF_ANNOUNCEMENTS: route.announcements,
         CONF_SILENCE: route.silence,
         CONF_STREAM: route.stream,
+        CONF_CONVERT_TO_WAV: route.convert_to_wav,
         CONF_YAML: True,
     }
     if route.volume is not None:

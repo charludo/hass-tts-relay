@@ -23,6 +23,7 @@ _LOGGER = logging.getLogger(__name__)
 
 REPLY_PATH = "/api/tts_relay/reply"  # /<token>: the real reply, for the speaker
 SILENT_PATH = "/api/tts_relay/silent"  # /<name>.<ext>?src=<url>: a silent copy
+WAV_PATH = "/api/tts_relay/wav"  # /<token>.wav: the real reply as WAV, for the speaker
 SILENT_URL_LIFETIME = timedelta(minutes=5)
 
 CONTENT_TYPES = {"mp3": "audio/mpeg", "flac": "audio/flac", "wav": "audio/wav"}
@@ -51,6 +52,20 @@ def _ffmpeg_lost(hass: HomeAssistant) -> None:
 
 def reply_path(token: str) -> str:
     return f"{REPLY_PATH}/{token}"
+
+
+def wav_path(token: str) -> str:
+    # Ends in .wav, which is all Sonos looks at.
+    return f"{WAV_PATH}/{token}.wav"
+
+
+def needs_wav(hass: HomeAssistant, token: str | None) -> bool:
+    """Whether the reply is in a format that's worth converting, and can be."""
+    try:
+        stream = tts.async_get_stream(hass, token) if token else None
+    except KeyError:  # No text-to-speech set up.
+        return False
+    return stream is not None and stream.extension not in ("wav", "mp3") and ffmpeg_ok(hass)
 
 
 def silence_stream(hass: HomeAssistant, token: str | None) -> bool:
@@ -138,6 +153,14 @@ async def silent_copy(
         yield chunk
 
 
+async def wav_copy(
+    hass: HomeAssistant, audio: AsyncIterator[bytes], extension: str
+) -> AsyncGenerator[bytes]:
+    """The audio as WAV, as it comes in."""
+    async for chunk in _ffmpeg(hass, ["-f", extension, "-i", "pipe:0"], audio, "wav", silent=False):
+        yield chunk
+
+
 async def _silent_wav(audio: AsyncIterator[bytes]) -> AsyncGenerator[bytes]:
     # Keep the header, zero the samples.
     header: bytes | None = b""
@@ -178,7 +201,7 @@ def _binary(hass: HomeAssistant) -> str:
 
 
 async def _start_ffmpeg(
-    hass: HomeAssistant, source: list[str], fed: bool, extension: str
+    hass: HomeAssistant, source: list[str], fed: bool, extension: str, silent: bool
 ) -> asyncio.subprocess.Process:
     return await asyncio.create_subprocess_exec(
         _binary(hass),
@@ -191,8 +214,7 @@ async def _start_ffmpeg(
         "-analyzeduration",
         "0",
         *source,
-        "-af",
-        "volume=0",
+        *(["-af", "volume=0"] if silent else []),
         "-f",
         extension,
         "-flush_packets",
@@ -209,9 +231,11 @@ async def _ffmpeg(
     source: list[str],
     feed: AsyncIterator[bytes] | None,
     extension: str,
+    *,
+    silent: bool = True,
 ) -> AsyncGenerator[bytes]:
     try:
-        process = await _start_ffmpeg(hass, source, feed is not None, extension)
+        process = await _start_ffmpeg(hass, source, feed is not None, extension, silent)
     except OSError as err:  # Not installed, or not runnable.
         _ffmpeg_lost(hass)
         raise SilenceError(f"Can't run ffmpeg: {err}") from err
@@ -265,6 +289,34 @@ class ReplyView(HomeAssistantView):
         response.content_type = stream.content_type
         await response.prepare(request)
         async for chunk in tts.ResultStream.async_stream_result(stream):
+            await response.write(chunk)
+        await response.write_eof()
+        return response
+
+
+class WavView(ReplyView):
+    url = WAV_PATH + "/{name}"
+    name = "api:tts_relay:wav"
+
+    async def head(self, request: web.Request, name: str) -> web.StreamResponse:
+        self._stream(name.removesuffix(".wav"))
+        return web.Response(content_type=CONTENT_TYPES["wav"])
+
+    async def get(self, request: web.Request, name: str) -> web.StreamResponse:
+        stream = self._stream(name.removesuffix(".wav"))
+        real = tts.ResultStream.async_stream_result
+        copy = wav_copy(self.hass, real(stream), stream.extension)
+        try:
+            first = await anext(copy, b"")
+        except SilenceError as err:
+            # Rather the original than nothing; some speakers may cope.
+            _LOGGER.warning("Can't convert the reply to WAV: %s", err)
+            return await super().get(request, name.removesuffix(".wav"))
+        response = web.StreamResponse()
+        response.content_type = CONTENT_TYPES["wav"]
+        await response.prepare(request)
+        await response.write(first)
+        async for chunk in copy:
             await response.write(chunk)
         await response.write_eof()
         return response

@@ -91,6 +91,7 @@ Each route relays one or more satellites to one speaker.
 | `announcements` | `true` | Also play the satellite's announcements on the speaker. Reply rules don't apply to these. |
 | `silence` | `false` | Turn the reply copies sent to the satellites into silence. Requires ffmpeg. See [Silence the satellite](#silence-the-satellite). |
 | `stream` | `false` | Start long replies from LLM agents while they're still being written. See [Start long replies early](#start-long-replies-early). |
+| `convert_to_wav` | `false` | Convert FLAC replies to WAV for the speaker. Turn this one if using both Voice PE and Sonos. Requires ffmpeg. See [Voice Preview Edition](#voice-preview-edition). |
 | `rules` | `["intent_sounds"]` | Which [reply rules](#-reply-rules) apply. |
 
 #### YAML configuration
@@ -110,11 +111,12 @@ tts_relay:
         - assist_satellite.living_room
         - assist_satellite.dining_room
       target: media_player.living_room
-      volume: 0.35 # Sonos only, optional, 0–1
+      volume: 0.35 # Sonos only, optional, 0-1
       duck: true # see Ducking below
       announcements: true
       silence: false # see Silence the satellite below
       stream: false # see Start long replies early below
+      convert_to_wav: false # see Voice Preview Edition below
       rules: # optional, see Reply rules below
         - intent_sounds
         - quiet_on_no_match
@@ -281,8 +283,14 @@ The Sonos log just says *"AudioClip announce only supports MP3 and WAV"*.
 TTS Relay shows a warning under **Settings** -> **Repairs** when this happens.
 Other speakers play FLAC just fine.
 
-To fix it, make the Voice PE ask for WAV.
-This means taking control of its firmware: adopt it in the [ESPHome Device Builder](https://esphome.io/guides/getting_started_hassio/), then override the format of its media player's announcement pipeline:
+To fix it, turn on the route's `convert_to_wav` option.
+TTS Relay then converts FLAC replies to WAV on the fly.
+This needs ffmpeg, like `silence` does, and (usually) adds less than 100ms of latency to the pipeline.
+
+Alternatively, you can make the Voice PE ask for WAV in the first place.
+That saves the conversion, but it's only worth it if you are bothered by the latency mentioned above.
+This means taking control of the Voice PE's firmware.
+Adopt it in the [ESPHome Device Builder](https://esphome.io/guides/getting_started_hassio/), then override the format of its media player's announcement pipeline:
 
 ```yaml
 # The config ESPHome created when you adopted the Voice PE
@@ -341,7 +349,7 @@ Reads the reply rules and sounds again.
   **For any other (Cast, AirPlay, DLNA, ...),** a workaround is to add that speaker to [Music Assistant](https://music-assistant.io) and pick the `media_player` entity Music Assistant creates for it instead.
   This is because Music Assistant implements announcements for these, and I didn't want to reinvent the wheel here.
 - One speaker per satellite.
-- Sonos only plays MP3 and WAV replies. Satellites asking for other formats, like the Voice PE, need a firmware change (see [Voice Preview Edition](#voice-preview-edition)).
+- Sonos only plays MP3 and WAV replies. For satellites asking for FLAC, like the Voice PE, turn on `convert_to_wav` (see [Voice Preview Edition](#voice-preview-edition)).
 - Announcements repeated within 5 seconds get dropped (because we need to deduplicate announcements going to multiple satellites that are TTS Relay-routed to a single speaker).
 - Pre-announcement chimes are dropped without replacement, due to wildly varying behavior on different speakers how multiple announcements in quick successions are handled.
 

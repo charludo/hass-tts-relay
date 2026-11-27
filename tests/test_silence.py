@@ -303,7 +303,7 @@ def no_ffmpeg(monkeypatch):
 def ffmpeg_issue(hass):
     from homeassistant.helpers import issue_registry as ir
 
-    return ir.async_get(hass).async_get_issue("tts_relay", "silence_needs_ffmpeg")
+    return ir.async_get(hass).async_get_issue("tts_relay", "needs_ffmpeg")
 
 
 async def test_without_ffmpeg_satellites_are_heard_and_the_rest_works(
@@ -383,4 +383,4 @@ async def test_the_route_form_says_when_ffmpeg_is_missing(hass, players, monkeyp
     texts = await async_get_translations(hass, "en", "config", ["tts_relay"])
     assert texts["component.tts_relay.config.step.add_route.description"].endswith("{ffmpeg}")
     texts = await async_get_translations(hass, "en", "issues", ["tts_relay"])
-    assert "{routes}" in texts["component.tts_relay.issues.silence_needs_ffmpeg.description"]
+    assert "{routes}" in texts["component.tts_relay.issues.needs_ffmpeg.description"]

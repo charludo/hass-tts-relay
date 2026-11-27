@@ -21,6 +21,7 @@
           "announcements": "Relay announcements",
           "silence": "Silence the satellites",
           "stream": "Start long replies early",
+          "convert_to_wav": "Convert replies to WAV",
           "rules": "Reply rules"
         },
         "data_description": {
@@ -32,6 +33,7 @@
           "announcements": "Also play the satellite's announcements on the speaker. Reply rules don't apply to these.",
           "silence": "Silence reply copies sent to the satellite. LED animations keep working.",
           "stream": "With a conversation agent that streams, like most LLM ones, start playing a long reply while it's still being written, as the satellite does. **Rules that look at the response can't apply to these replies.**",
+          "convert_to_wav": "Turn this on if a satellite in this route is a Voice PE (or asks for FLAC otherwise) and the speaker is a Sonos: Sonos doesn't play FLAC replies at all. The speaker then gets them as WAV, converted on the fly. Needs ffmpeg.",
           "rules": "Rules for further altering responses. Custom rules should go into config/tts_relay/rules/"
         }
       }
@@ -61,6 +63,7 @@
             "announcements": "Relay announcements",
             "silence": "Silence the satellites",
             "stream": "Start long replies early",
+            "convert_to_wav": "Convert replies to WAV",
             "rules": "Reply rules"
           },
           "data_description": {
@@ -72,6 +75,7 @@
             "announcements": "Also play the satellite's announcements on the speaker. Reply rules don't apply to these.",
             "silence": "Silence reply copies sent to the satellite. LED animations keep working.",
             "stream": "With a conversation agent that streams, like most LLM ones, start playing a long reply while it's still being written, as the satellite does. **Rules that look at the response can't apply to these replies.**",
+            "convert_to_wav": "Turn this on if a satellite in this route is a Voice PE (or asks for FLAC otherwise) and the speaker is a Sonos: Sonos doesn't play FLAC replies at all. The speaker then gets them as WAV, converted on the fly. Needs ffmpeg.",
             "rules": "Rules for further altering responses. Custom rules should go into config/tts_relay/rules/"
           }
         },
@@ -87,6 +91,7 @@
             "announcements": "Relay announcements",
             "silence": "Silence the satellites",
             "stream": "Start long replies early",
+            "convert_to_wav": "Convert replies to WAV",
             "rules": "Reply rules"
           },
           "data_description": {
@@ -98,6 +103,7 @@
             "announcements": "Also play the satellite's announcements on the speaker. Reply rules don't apply to these.",
             "silence": "Silence reply copies sent to the satellite. LED animations keep working.",
             "stream": "With a conversation agent that streams, like most LLM ones, start playing a long reply while it's still being written, as the satellite does. **Rules that look at the response can't apply to these replies.**",
+            "convert_to_wav": "Turn this on if a satellite in this route is a Voice PE (or asks for FLAC otherwise) and the speaker is a Sonos: Sonos doesn't play FLAC replies at all. The speaker then gets them as WAV, converted on the fly. Needs ffmpeg.",
             "rules": "Rules for further altering responses. Custom rules should go into config/tts_relay/rules/"
           }
         }
@@ -115,11 +121,11 @@
   "issues": {
     "reply_format": {
       "title": "{target} can't play replies from {satellite}",
-      "description": "{satellite} asks Home Assistant for its replies as {format}. Sonos speakers only play MP3 and WAV as announcements.\n\nThis is usually seen in a Home Assistant Voice PE, which asks for FLAC. Set its firmware to ask for WAV instead, as described under \"Learn more\". This message goes away after the next reply from {satellite} that {target} can play."
+      "description": "{satellite} asks Home Assistant for its replies as {format}, which {target} can't play as an announcement: Sonos speakers only play MP3 and WAV.\n\nThis is usually a Home Assistant Voice PE, which asks for FLAC. Turn on *Convert replies to WAV* for this route in TTS Relay's settings. This message goes away after the next reply from {satellite} that {target} can play."
     },
-    "silence_needs_ffmpeg": {
-      "title": "The satellites can't be silenced without ffmpeg",
-      "description": "*Silence the satellites* is on for {routes}, but ffmpeg isn't available. TTS Relay needs it to give the satellites a silent copy of their replies, so for now they will be played out loud. Everything else keeps working.\n\nHome Assistant normally comes with ffmpeg. If yours doesn't, install it, or set the path to it in the FFmpeg integration, and restart Home Assistant. This message goes away once ffmpeg is found, or once no route has the option on."
+    "needs_ffmpeg": {
+      "title": "Some route options need ffmpeg",
+      "description": "{routes} use *Silence the satellites* or *Convert replies to WAV*, but ffmpeg isn't available. TTS Relay needs it for both, so for now the satellites are heard, and replies are relayed in their original format. Everything else keeps working.\n\nHome Assistant normally comes with ffmpeg. If yours doesn't, install it, or set the path to it in the FFmpeg integration, and restart Home Assistant. This message goes away once ffmpeg is found, or once no route has these options on."
     }
   },
   "services": {

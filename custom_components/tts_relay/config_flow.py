@@ -17,6 +17,7 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_ANNOUNCEMENTS,
+    CONF_CONVERT_TO_WAV,
     CONF_DUCK,
     CONF_NAME,
     CONF_RULES,
@@ -28,6 +29,7 @@ from .const import (
     CONF_YAML,
     DATA_RELAY,
     DEFAULT_ANNOUNCEMENTS,
+    DEFAULT_CONVERT_TO_WAV,
     DEFAULT_DUCK,
     DEFAULT_SILENCE,
     DEFAULT_STREAM,
@@ -93,6 +95,10 @@ def _settings_schema(hass: HomeAssistant, current: Mapping[str, Any]) -> dict:
         vol.Optional(CONF_STREAM, default=current.get(CONF_STREAM, DEFAULT_STREAM)): (
             selector.BooleanSelector()
         ),
+        vol.Optional(
+            CONF_CONVERT_TO_WAV,
+            default=current.get(CONF_CONVERT_TO_WAV, DEFAULT_CONVERT_TO_WAV),
+        ): selector.BooleanSelector(),
         vol.Optional(CONF_RULES, default=chosen_rules): selector.SelectSelector(
             selector.SelectSelectorConfig(
                 options=[
@@ -128,6 +134,7 @@ def _route_data(form: Mapping[str, Any]) -> dict[str, Any]:
         CONF_ANNOUNCEMENTS: form.get(CONF_ANNOUNCEMENTS, DEFAULT_ANNOUNCEMENTS),
         CONF_SILENCE: form.get(CONF_SILENCE, DEFAULT_SILENCE),
         CONF_STREAM: form.get(CONF_STREAM, DEFAULT_STREAM),
+        CONF_CONVERT_TO_WAV: form.get(CONF_CONVERT_TO_WAV, DEFAULT_CONVERT_TO_WAV),
         CONF_RULES: list(form.get(CONF_RULES, [])),
     }
     if form.get(CONF_VOLUME) is not None:
@@ -171,8 +178,8 @@ def _ffmpeg_note(hass: HomeAssistant) -> str:
     if relay is None or relay.ffmpeg_ok:
         return ""
     return (
-        "\n\n**ffmpeg isn't available**, so *Silence the satellites* won't work: "
-        "the satellites will be heard. Home Assistant normally comes with ffmpeg."
+        "\n\n**ffmpeg isn't available**, so *Silence the satellites* and "
+        "*Convert replies to WAV* won't work. Home Assistant normally comes with ffmpeg."
     )
 
 

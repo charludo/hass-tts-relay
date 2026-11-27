@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 DOMAIN = "tts_relay"
 
 CONF_ANNOUNCEMENTS = "announcements"
+CONF_CONVERT_TO_WAV = "convert_to_wav"
 CONF_NAME = "name"
 CONF_SATELLITES = "satellites"
 CONF_SILENCE = "silence"
@@ -26,6 +27,7 @@ SUBENTRY_ROUTE = "route"
 
 DEFAULT_DUCK = True
 DEFAULT_ANNOUNCEMENTS = True
+DEFAULT_CONVERT_TO_WAV = False
 DEFAULT_SILENCE = False
 DEFAULT_STREAM = False
 
@@ -38,6 +40,6 @@ SOUNDS_URL_PATH = f"/{DOMAIN}/sounds"
 DATA_RELAY: HassKey[Relay] = HassKey(DOMAIN)
 
 ISSUE_REPLY_FORMAT = "reply_format"
-ISSUE_SILENCE_FFMPEG = "silence_needs_ffmpeg"
+ISSUE_NEEDS_FFMPEG = "needs_ffmpeg"
 PE_DOCS_URL = "https://github.com/charludo/hass-tts-relay#voice-preview-edition"
 SILENCE_DOCS_URL = "https://github.com/charludo/hass-tts-relay#silence-the-satellite"

@@ -33,13 +33,20 @@ from .const import (
     DATA_RELAY,
     DOMAIN,
     DUCK_URL_PATH,
+    ISSUE_NEEDS_FFMPEG,
     ISSUE_REPLY_FORMAT,
-    ISSUE_SILENCE_FFMPEG,
     PE_DOCS_URL,
     SILENCE_DOCS_URL,
 )
 from .rules import Rule, by_priority, decide, variables
-from .silence import local_file, reply_path, silence_stream, silent_url
+from .silence import (
+    local_file,
+    needs_wav,
+    reply_path,
+    silence_stream,
+    silent_url,
+    wav_path,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,6 +70,7 @@ class Route:
     announcements: bool = True
     silence: bool = False  # the satellites play a silent copy of what they'd play
     stream: bool = False  # play streamed (LLM) replies while they're being written
+    convert_to_wav: bool = False  # e.g. FLAC replies, which Sonos doesn't play
     source: str = "ui"
 
     @property
@@ -90,7 +98,7 @@ class Relay:
         self._bad_format: set[str] = set()  # satellites already warned about
         self._stream_url: dict[str, str] = {}  # the run's reply, if it may stream
         self._streamed: set[str] = set()  # satellites whose reply plays already
-        self.ffmpeg_ok = True  # needed for silent copies
+        self.ffmpeg_ok = True  # needed for silent copies and WAV
 
     @callback
     def add_route(self, route: Route) -> CALLBACK_TYPE:
@@ -104,7 +112,7 @@ class Relay:
             route.name,
             route.source,
         )
-        self._check_silence()
+        self._check_ffmpeg()
 
         @callback
         def remove() -> None:
@@ -113,7 +121,7 @@ class Relay:
             for satellite in route.satellites:
                 if self._by_satellite.get(satellite) is route:
                     del self._by_satellite[satellite]
-            self._check_silence()
+            self._check_ffmpeg()
 
         return remove
 
@@ -121,29 +129,31 @@ class Relay:
     def set_ffmpeg(self, ok: bool) -> None:
         if ok != self.ffmpeg_ok:
             self.ffmpeg_ok = ok
-            self._check_silence()
+            self._check_ffmpeg()
 
     @callback
-    def _check_silence(self) -> None:
-        """Raise a repair while a route wants silence, which ffmpeg is missing for."""
-        routes = sorted(route.name for route in self.routes.values() if route.silence)
+    def _check_ffmpeg(self) -> None:
+        """Raise a repair while a route has an option on that ffmpeg is missing for."""
+        routes = sorted(
+            route.name for route in self.routes.values() if route.silence or route.convert_to_wav
+        )
         if self.ffmpeg_ok or not routes:
-            ir.async_delete_issue(self.hass, DOMAIN, ISSUE_SILENCE_FFMPEG)
+            ir.async_delete_issue(self.hass, DOMAIN, ISSUE_NEEDS_FFMPEG)
             return
-        if ir.async_get(self.hass).async_get_issue(DOMAIN, ISSUE_SILENCE_FFMPEG) is None:
+        if ir.async_get(self.hass).async_get_issue(DOMAIN, ISSUE_NEEDS_FFMPEG) is None:
             _LOGGER.warning(
-                "ffmpeg isn't available, so the satellites of %s will be heard. See %s",
+                "ffmpeg isn't available, so %s can't silence or convert replies. See %s",
                 ", ".join(routes),
                 SILENCE_DOCS_URL,
             )
         ir.async_create_issue(
             self.hass,
             DOMAIN,
-            ISSUE_SILENCE_FFMPEG,
+            ISSUE_NEEDS_FFMPEG,
             is_fixable=False,
             learn_more_url=SILENCE_DOCS_URL,
             severity=ir.IssueSeverity.WARNING,
-            translation_key=ISSUE_SILENCE_FFMPEG,
+            translation_key=ISSUE_NEEDS_FFMPEG,
             translation_placeholders={"routes": ", ".join(routes)},
         )
 
@@ -225,9 +235,12 @@ class Relay:
     def _speech_url(self, route: Route, tts_output: dict[str, Any]) -> str | None:
         """Where the speaker gets the reply's speech."""
         token = tts_output.get("token")
-        if route.silence and token and silence_stream(self.hass, token):
-            return reply_path(token)
-        return tts_output.get("url")
+        if not token:
+            return tts_output.get("url")
+        silent = route.silence and silence_stream(self.hass, token)
+        if route.convert_to_wav and needs_wav(self.hass, token):
+            return wav_path(token)
+        return reply_path(token) if silent else tts_output.get("url")
 
     def _mirror_on_satellite(self, satellite: str, token: str | None, url: str | None) -> None:
         try:
