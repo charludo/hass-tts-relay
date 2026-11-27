@@ -239,6 +239,9 @@ For ducking while a command is being given, it's a bit more complicated.
 For most media players, we lower the volume to 30% of current volume once the wake word has been detected, and raise it back up once end of speech has been detected.
 This should work just fine, but is admittedly a bit hacky.
 
+If the volume is changed while it's lowered, e.g. by a voice command on another satellite, in the app, or by an automation, the change is held back until ducking has finished.
+"Volume to 50" then restores to 50%, and "quieter" to a step below the volume before ducking, and so on.
+
 For Sonos, there's a slightly nicer solution, where we just "announce" a silent audio clip.
 The reason this only works for Sonos is because the other player integrations don't allow us to cancel an announcement mid-way, so you'd be stuck with the ducking for a fixed amount of time.
 

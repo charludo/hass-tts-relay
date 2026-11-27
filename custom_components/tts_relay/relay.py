@@ -26,7 +26,7 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.util import slugify
 
-from . import sonos
+from . import sonos, volume
 from .const import DATA_RELAY, DOMAIN, DUCK_URL_PATH, ISSUE_REPLY_FORMAT, PE_DOCS_URL
 from .rules import Rule, by_priority, decide, variables
 
@@ -69,7 +69,7 @@ class Relay:
         self._intent_output: dict[str, dict[str, Any] | None] = {}
         self._acknowledged: set[str] = set()
         self._ducks: dict[str, asyncio.Task[str | None]] = {}
-        self._lowered: dict[str, float] = {}
+        self._holds: dict[str, volume.Hold] = {}  # volume ducks, by target
         self._duckers: dict[str, set[str]] = {}
         self._announced: dict[tuple[str, str], float] = {}  # (target, what) -> when
         self._bad_format: set[str] = set()  # satellites already warned about
@@ -306,30 +306,45 @@ class Relay:
         )
 
     def _lower_volume(self, target: str) -> None:
-        state = self.hass.states.get(target)
-        if state is None or state.state != MediaPlayerState.PLAYING or target in self._lowered:
-            return
-        volume = state.attributes.get(ATTR_MEDIA_VOLUME_LEVEL)
-        features = state.attributes.get(ATTR_SUPPORTED_FEATURES, 0)
-        if volume is None or not features & MediaPlayerEntityFeature.VOLUME_SET:
-            return
-        self._lowered[target] = volume
-        self._run(self._set_volume(target, volume * DUCKED_VOLUME), "duck", target)
+        if (hold := self._holds.get(target)) is not None:
+            if not hold.restoring:
+                return  # Ducked already.
+            # Back down before the player reported the restore. It may still
+            # report the ducked volume, so keep what to restore to.
+            hold.restoring = False
+        else:
+            state = self.hass.states.get(target)
+            if state is None or state.state != MediaPlayerState.PLAYING:
+                return
+            level = state.attributes.get(ATTR_MEDIA_VOLUME_LEVEL)
+            features = state.attributes.get(ATTR_SUPPORTED_FEATURES, 0)
+            if level is None or not features & MediaPlayerEntityFeature.VOLUME_SET:
+                return
+            hold = self._holds[target] = volume.Hold(self.hass, target, level)
+        self._run(volume.set_volume(self.hass, target, hold.volume * DUCKED_VOLUME), "duck", target)
 
-    async def _set_volume(self, target: str, volume: float) -> None:
-        try:
-            await self.hass.services.async_call(
-                "media_player",
-                "volume_set",
-                {"entity_id": target, ATTR_MEDIA_VOLUME_LEVEL: volume},
-                blocking=True,
-            )
-        except Exception:
-            _LOGGER.exception("Setting the volume of %s failed", target)
+    async def _restore_volume(self, target: str) -> None:
+        hold = self._holds.get(target)
+        if hold is None or hold.restoring:
+            return
+        hold.restoring = True
+        await volume.set_volume(self.hass, target, hold.volume)
+        if hold.held:
+            # A "quieter" right after reads the player's volume, so changes keep
+            # going to the hold until the player reports the restored one.
+            # Not waited for here, or the reply would wait too.
+            self._run(self._end_hold(target, hold), "end_hold", target)
+        elif self._holds.get(target) is hold:
+            del self._holds[target]
+
+    async def _end_hold(self, target: str, hold: volume.Hold) -> None:
+        await hold.until_reported()
+        if self._holds.get(target) is hold and hold.restoring:
+            hold.release()
+            del self._holds[target]
 
     async def _clear_duck(self, target: str) -> None:
-        if (volume := self._lowered.pop(target, None)) is not None:
-            await self._set_volume(target, volume)
+        await self._restore_volume(target)
         task = self._ducks.pop(target, None)
         if task is None:
             return
@@ -364,9 +379,10 @@ class Relay:
 
 
 def install() -> None:
-    """Wrap the satellite entity."""
+    """Wrap the satellite entity, and the relative volume intent."""
     _wrap_pipeline_events()
     _wrap_announcements()
+    volume.install()
 
 
 def _relay_for(entity: AssistSatelliteEntity) -> Relay | None:
