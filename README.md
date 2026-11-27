@@ -228,7 +228,7 @@ If no rule matches, the reply is forwarded unchanged, i.e. the TTS output plays 
 
 &#160;
 
-### 🔉 Ducking
+### 🦆 Ducking
 
 "Ducking" refers to the volume of whatever is currently playing on a speaker being temporarily reduced.
 With a voice satellite, this should happen both after the wake word has been recognized and you are giving a command, so that the STT has a better shot at understanding you;
