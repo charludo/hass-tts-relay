@@ -6,10 +6,11 @@ import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from functools import wraps
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import urlparse
 
+from homeassistant.components import tts
 from homeassistant.components.assist_pipeline import PipelineEvent, PipelineEventType
 from homeassistant.components.assist_satellite.entity import (
     AssistSatelliteAnnouncement,
@@ -28,8 +29,15 @@ from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.util import slugify
 
 from . import sonos, volume
-from .const import DATA_RELAY, DOMAIN, DUCK_URL_PATH, ISSUE_REPLY_FORMAT, PE_DOCS_URL
-from .rules import Rule, by_priority, decide, variables
+from .const import (
+    DATA_RELAY,
+    DOMAIN,
+    DUCK_URL_PATH,
+    ISSUE_REPLY_FORMAT,
+    PE_DOCS_URL,
+    SOUNDS_URL_PATH,
+)
+from .rules import Rule, by_priority, decide, user_dir, variables
 from .silence import Silencer
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,6 +45,8 @@ _LOGGER = logging.getLogger(__name__)
 DUCKED_VOLUME = 0.3
 # The same announcement for several satellites of one route plays once.
 ANNOUNCEMENT_REPEAT_WINDOW = 5.0  # seconds
+# What a satellite plays instead of a reply we drop.
+SILENCE = Path(__file__).parent / "silence.mp3"
 # Sonos doesn't play other formats as an announcement.
 SONOS_CLIP_FORMATS = frozenset({".mp3", ".wav"})
 
@@ -165,7 +175,8 @@ class Relay:
                     self._intent_output.pop(satellite, None)
                     self._acknowledged.discard(satellite)
                     return
-                tts_url = (data.get("tts_output") or {}).get("url")
+                tts_output = data.get("tts_output") or {}
+                tts_url = tts_output.get("url")
                 self._check_format(route, satellite, tts_url)
                 url = self._reply_url(
                     route,
@@ -175,7 +186,38 @@ class Relay:
                     acknowledged=satellite in self._acknowledged,
                 )
                 self._acknowledged.discard(satellite)
+                if tts_url and url != self._absolute(tts_url):
+                    self._mirror_on_satellite(satellite, tts_output.get("token"), url)
                 self._play_reply(route, satellite, url)
+
+    def _mirror_on_satellite(self, satellite: str, token: str | None, url: str | None) -> None:
+        try:
+            stream = tts.async_get_stream(self.hass, token) if token else None
+        except KeyError:  # No text-to-speech set up.
+            stream = None
+        if stream is None:
+            return
+        path = self._local_file(url) if url else None
+        _LOGGER.debug("%s plays %s instead of the speech", satellite, path or "silence")
+        # Like Home Assistant's own acknowledge sound, in the satellite's format.
+        stream.async_override_result(path or SILENCE)
+
+    def _local_file(self, url: str) -> Path | None:
+        """The file on disk behind a sound's URL, if it's one Home Assistant serves."""
+        parsed = urlparse(url)
+        base = self._absolute("/")
+        if parsed.netloc and (base is None or parsed.netloc != urlparse(base).netloc):
+            return None
+        relative = PurePosixPath(parsed.path)
+        for prefix, folder in (
+            (PurePosixPath(SOUNDS_URL_PATH), user_dir(self.hass, "sounds")),
+            (PurePosixPath("/local"), Path(self.hass.config.path("www"))),
+        ):
+            if relative.is_relative_to(prefix):
+                path = (folder / relative.relative_to(prefix)).resolve()
+                if path.is_relative_to(folder.resolve()) and path.is_file():
+                    return path
+        return None
 
     def _stream(self, route: Route, satellite: str, tts_url: str) -> None:
         """Play the reply while the agent is still writing it, if the rules allow.
@@ -187,6 +229,7 @@ class Relay:
         if url is None or url != self._absolute(tts_url):
             return
         self._check_format(route, satellite, tts_url)
+        _LOGGER.debug("%s: the agent streams, playing its reply early", satellite)
         self._streamed.add(satellite)
         self._play_reply(route, satellite, url)
 
@@ -457,13 +500,12 @@ def _wrap_pipeline_events() -> None:
 
     @wraps(original)
     def on_pipeline_event(self, event: PipelineEvent) -> None:
+        if (relay := _relay_for(self)) is not None:
+            try:
+                relay.handle_event(self.entity_id, event)
+            except Exception:
+                _LOGGER.exception("Handling %s for %s failed", event.type, self.entity_id)
         original(self, event)
-        if (relay := _relay_for(self)) is None:
-            return
-        try:
-            relay.handle_event(self.entity_id, event)
-        except Exception:
-            _LOGGER.exception("Handling %s for %s failed", event.type, self.entity_id)
 
     on_pipeline_event._tts_relay = True  # type: ignore[attr-defined]
     AssistSatelliteEntity._internal_on_pipeline_event = on_pipeline_event
