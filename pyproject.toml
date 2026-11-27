@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tts_relay"
-version = "0.1.0"
+version = "0.2.0"
 description = "Relay voice replies and announcements of one or more satellites to a media player."
 readme = "README.md"
 license = { text = "AGPL-3.0" }
