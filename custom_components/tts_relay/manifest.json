@@ -4,8 +4,10 @@
   "after_dependencies": [
     "assist_pipeline",
     "assist_satellite",
+    "ffmpeg",
     "media_player",
-    "sonos"
+    "sonos",
+    "tts"
   ],
   "categories": [
     "ai_voice.voice_assistants",

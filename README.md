@@ -89,7 +89,7 @@ Each route relays one or more satellites to one speaker.
 | `volume` | - | (Sonos only) Volume of the replies. This is independent of the main volume of the Sonos. |
 | `duck` | `true` | Duck the normal speaker output while you are saying a voice command. See [Ducking](#-ducking). |
 | `announcements` | `true` | Also play the satellite's announcements on the speaker. Reply rules don't apply to these. |
-| `silence` | `false` | Mute the satellites' own speakers while they reply. See [Silence the satellite](#silence-the-satellite). |
+| `silence` | `false` | Turn the reply copies sent to the satellites into silence. Requires ffmpeg. See [Silence the satellite](#silence-the-satellite). |
 | `stream` | `false` | Start long replies from LLM agents while they're still being written. See [Start long replies early](#start-long-replies-early). |
 | `rules` | `["intent_sounds"]` | Which [reply rules](#-reply-rules) apply. |
 
@@ -128,33 +128,15 @@ Thus if you actually *do* have a speaker plugged into the satellite and configur
 The reason we don't stop sending the response to the satellite is that LVA & Co use the audio to determine how long LED animations etc. should play, and when to start listening for a wake word again.
 So instead of not playing it, the satellite should play it silently.
 
-If the satellite has a media player of its own in Home Assistant (like the Voice PE, and other ESPHome satellites with a speaker), turn on the route's `silence` option.
-TTS Relay then mutes that media player from the start of a command until the satellite is done replying, and unmutes it afterwards.
-Timers, the wake sound and the like stay audible outside of commands.
+If you turn on a route's `silence` option, the satellites then get a silent copy of everything TTS Relay relays.
+It plays that, so its lights and its listening mode continue to follow along, but only the selected speaker is heard.
+This should work for any satellite type.
 
-You can also mute the satellite's media player in Home Assistant yourself, once.
-The Voice PE keeps that across reboots.
-But then *everything* on the satellite is muted, including its timer alarms (which TTS Relay doesn't relay), the wake sound and button sounds, and the Voice PE's LEDs show the "muted" pattern when idle.
-Setting the volume to 0 doesn't work on the Voice PE, by the way, it then just plays at 40%.
+The silent copies are made with ffmpeg, which Home Assistant *usually* brings along for things like text-to-speech anyway.
+Without ffmpeg, the option doesn't work and the satellites are heard.
+TTS Relay warns about that under **Settings** -> **Repairs** and when you set up a route.
 
-If you're patching the Voice PE's firmware anyway (see [Voice Preview Edition](#voice-preview-edition)), it can mute itself during commands instead.
-That's the most involved solution, but also the best one...
-
-For any other satellite, the simplest fix is to just unplug the satellite speaker.
-If your setup does not *have* an audio-out, try and see if you can configure a dummy card.
-E.g. in Linux, this might look like:
-
-```sh
-modprobe snd-dummy                 # load the dummy sound card now
-snd-dummy | tee -a /etc/modules    # and on every boot
-aplay -l | grep Dummy              # check it's there
-```
-
-Then point the satellite at it, e.g. for LVA add:
-
-```sh
---audio-output-device alsa/plughw:CARD=Dummy
-```
+If you can though, the simplest fix to silence a satellite is to just unplug the satellite speaker.
 
 #### Start long replies early
 
@@ -318,30 +300,9 @@ media_player:
       sources:
         - audio_file_announcement_source
         - http_announcement_source
-
-# Optional: mute the speaker during commands, so replies only play on the target speaker.
-# This is not Sonos-specific, see below.
-voice_assistant:
-  on_intent_start:
-    - speaker.mute_on: announcement_resampling_speaker
-  on_end:
-    - wait_until:
-        not:
-          voice_assistant.is_running: # until the reply has finished playing
-    - if:
-        condition:
-          # Muted in Home Assistant stays muted.
-          lambda: "return !id(external_media_player).is_muted();"
-        then:
-          - speaker.mute_off: announcement_resampling_speaker
 ```
 
 If a newer Voice PE firmware changes these, copy the `announcement_pipeline` of [its config](https://github.com/esphome/home-assistant-voice-pe/blob/main/home-assistant-voice.yaml) and change only `format`.
-
-If you're patching the firmware anyway, you might as well add the `voice_assistant` part too.
-It mutes the Voice PE from when Home Assistant starts working out the answer until the reply has finished playing.
-ESPHome adds these steps to the ones the Voice PE has already.
-Unlike the TTS Relay `silence` option, it doesn't touch the media player's mute in Home Assistant.
 
 Install the firmware, then ask the Voice PE something.
 

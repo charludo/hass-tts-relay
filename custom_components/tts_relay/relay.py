@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable, Coroutine
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import wraps
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -34,11 +34,12 @@ from .const import (
     DOMAIN,
     DUCK_URL_PATH,
     ISSUE_REPLY_FORMAT,
+    ISSUE_SILENCE_FFMPEG,
     PE_DOCS_URL,
-    SOUNDS_URL_PATH,
+    SILENCE_DOCS_URL,
 )
-from .rules import Rule, by_priority, decide, user_dir, variables
-from .silence import Silencer
+from .rules import Rule, by_priority, decide, variables
+from .silence import local_file, reply_path, silence_stream, silent_url
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ class Route:
     duck: bool = True
     rules: tuple[str, ...] | None = None  # None: the rules that are on by default
     announcements: bool = True
-    silence: bool = False  # mute the satellites' own speakers while they reply
+    silence: bool = False  # the satellites play a silent copy of what they'd play
     stream: bool = False  # play streamed (LLM) replies while they're being written
     source: str = "ui"
 
@@ -87,9 +88,9 @@ class Relay:
         self._duckers: dict[str, set[str]] = {}
         self._announced: dict[tuple[str, str], float] = {}  # (target, what) -> when
         self._bad_format: set[str] = set()  # satellites already warned about
-        self.silencer = Silencer(hass)
         self._stream_url: dict[str, str] = {}  # the run's reply, if it may stream
         self._streamed: set[str] = set()  # satellites whose reply plays already
+        self.ffmpeg_ok = True  # needed for silent copies
 
     @callback
     def add_route(self, route: Route) -> CALLBACK_TYPE:
@@ -103,6 +104,7 @@ class Relay:
             route.name,
             route.source,
         )
+        self._check_silence()
 
         @callback
         def remove() -> None:
@@ -111,8 +113,39 @@ class Relay:
             for satellite in route.satellites:
                 if self._by_satellite.get(satellite) is route:
                     del self._by_satellite[satellite]
+            self._check_silence()
 
         return remove
+
+    @callback
+    def set_ffmpeg(self, ok: bool) -> None:
+        if ok != self.ffmpeg_ok:
+            self.ffmpeg_ok = ok
+            self._check_silence()
+
+    @callback
+    def _check_silence(self) -> None:
+        """Raise a repair while a route wants silence, which ffmpeg is missing for."""
+        routes = sorted(route.name for route in self.routes.values() if route.silence)
+        if self.ffmpeg_ok or not routes:
+            ir.async_delete_issue(self.hass, DOMAIN, ISSUE_SILENCE_FFMPEG)
+            return
+        if ir.async_get(self.hass).async_get_issue(DOMAIN, ISSUE_SILENCE_FFMPEG) is None:
+            _LOGGER.warning(
+                "ffmpeg isn't available, so the satellites of %s will be heard. See %s",
+                ", ".join(routes),
+                SILENCE_DOCS_URL,
+            )
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            ISSUE_SILENCE_FFMPEG,
+            is_fixable=False,
+            learn_more_url=SILENCE_DOCS_URL,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=ISSUE_SILENCE_FFMPEG,
+            translation_placeholders={"routes": ", ".join(routes)},
+        )
 
     def route_for(self, satellite: str) -> Route | None:
         return self._by_satellite.get(satellite)
@@ -137,13 +170,12 @@ class Relay:
                 self._acknowledged.discard(satellite)
                 self._streamed.discard(satellite)
                 tts_output = data.get("tts_output") or {}
-                if route.stream and tts_output.get("stream_response") and tts_output.get("url"):
-                    self._stream_url[satellite] = tts_output["url"]
+                # Long before the satellite gets the reply to play.
+                speech = self._speech_url(route, tts_output)
+                if route.stream and tts_output.get("stream_response") and speech:
+                    self._stream_url[satellite] = speech
                 else:
                     self._stream_url.pop(satellite, None)
-                if route.silence:
-                    # Long before the satellite gets the reply to play.
-                    self._run(self.silencer.silence(satellite, route.target), "silence", satellite)
                 if route.duck:
                     self._duck(route, satellite)
             case (
@@ -176,7 +208,7 @@ class Relay:
                     self._acknowledged.discard(satellite)
                     return
                 tts_output = data.get("tts_output") or {}
-                tts_url = tts_output.get("url")
+                tts_url = self._speech_url(route, tts_output)
                 self._check_format(route, satellite, tts_url)
                 url = self._reply_url(
                     route,
@@ -190,6 +222,13 @@ class Relay:
                     self._mirror_on_satellite(satellite, tts_output.get("token"), url)
                 self._play_reply(route, satellite, url)
 
+    def _speech_url(self, route: Route, tts_output: dict[str, Any]) -> str | None:
+        """Where the speaker gets the reply's speech."""
+        token = tts_output.get("token")
+        if route.silence and token and silence_stream(self.hass, token):
+            return reply_path(token)
+        return tts_output.get("url")
+
     def _mirror_on_satellite(self, satellite: str, token: str | None, url: str | None) -> None:
         try:
             stream = tts.async_get_stream(self.hass, token) if token else None
@@ -197,27 +236,10 @@ class Relay:
             stream = None
         if stream is None:
             return
-        path = self._local_file(url) if url else None
+        path = local_file(self.hass, url) if url else None
         _LOGGER.debug("%s plays %s instead of the speech", satellite, path or "silence")
         # Like Home Assistant's own acknowledge sound, in the satellite's format.
         stream.async_override_result(path or SILENCE)
-
-    def _local_file(self, url: str) -> Path | None:
-        """The file on disk behind a sound's URL, if it's one Home Assistant serves."""
-        parsed = urlparse(url)
-        base = self._absolute("/")
-        if parsed.netloc and (base is None or parsed.netloc != urlparse(base).netloc):
-            return None
-        relative = PurePosixPath(parsed.path)
-        for prefix, folder in (
-            (PurePosixPath(SOUNDS_URL_PATH), user_dir(self.hass, "sounds")),
-            (PurePosixPath("/local"), Path(self.hass.config.path("www"))),
-        ):
-            if relative.is_relative_to(prefix):
-                path = (folder / relative.relative_to(prefix)).resolve()
-                if path.is_relative_to(folder.resolve()) and path.is_file():
-                    return path
-        return None
 
     def _stream(self, route: Route, satellite: str, tts_url: str) -> None:
         """Play the reply while the agent is still writing it, if the rules allow.
@@ -258,10 +280,32 @@ class Relay:
         if key in self._announced:
             return
         self._announced[key] = now
+        media = announcement.media_id
         if announcement.media_id_source == "tts":
-            self._check_format(route, satellite, announcement.media_id)
-        if (url := self._absolute(announcement.media_id)) is not None:
+            media = self._speech_url(route, {"token": announcement.tts_token, "url": media})
+            self._check_format(route, satellite, media)
+        if media and (url := self._absolute(media)) is not None:
             self._run(self.announce(route, url), "announcement", route.target)
+
+    @callback
+    def quiet_announcement(
+        self, satellite: str, announcement: AssistSatelliteAnnouncement
+    ) -> AssistSatelliteAnnouncement:
+        """What the satellite plays of an announcement we relay: a silent copy."""
+        route = self._by_satellite.get(satellite)
+        if route is None or not (route.announcements and route.silence and self.ffmpeg_ok):
+            return announcement
+        changes: dict[str, str | None] = {}
+        tts_silent = announcement.media_id_source == "tts" and silence_stream(
+            self.hass, announcement.tts_token
+        )
+        if not tts_silent and announcement.media_id:
+            changes["media_id"] = self._absolute(silent_url(self.hass, announcement.media_id))
+        if announcement.preannounce_media_id:
+            changes["preannounce_media_id"] = self._absolute(
+                silent_url(self.hass, announcement.preannounce_media_id)
+            )
+        return replace(announcement, **changes) if changes else announcement
 
     def _check_format(self, route: Route, satellite: str, tts_url: str | None) -> None:
         """Raise a repair if the satellite asks for speech the target can't play.
@@ -299,12 +343,6 @@ class Relay:
                 "format": extension.removeprefix(".").upper(),
             },
         )
-
-    async def silence_announcement(self, satellite: str) -> None:
-        """Mute the satellite's own speaker for an announcement we relay."""
-        route = self._by_satellite.get(satellite)
-        if route is not None and route.announcements and route.silence:
-            await self.silencer.silence(satellite, route.target)
 
     def _duck(self, route: Route, satellite: str) -> None:
         duckers = self._duckers.setdefault(route.target, set())
@@ -525,9 +563,10 @@ def _wrap_announcements() -> None:
         if (relay := _relay_for(self)) is None or self._is_announcing:
             return announcement
         try:
+            # First, so the speaker knows where to find the real speech.
+            quiet = relay.quiet_announcement(self.entity_id, announcement)
             relay.handle_announcement(self.entity_id, announcement)
-            # Waited for: the satellite starts playing as soon as this returns.
-            await relay.silence_announcement(self.entity_id)
+            announcement = quiet
         except Exception:
             _LOGGER.exception("Relaying an announcement for %s failed", self.entity_id)
         return announcement

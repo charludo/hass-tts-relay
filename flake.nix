@@ -34,14 +34,21 @@
       {
         devShells.default = pkgs.mkShell {
           name = "tts-relay-dev";
-          packages = [ pythonEnv ] ++ fmtTools;
+          packages = [
+            pythonEnv
+            pkgs.ffmpeg-headless
+          ]
+          ++ fmtTools;
         };
 
         checks = {
           tests =
             pkgs.runCommand "tts-relay-tests"
               {
-                nativeBuildInputs = [ pythonEnv ];
+                nativeBuildInputs = [
+                  pythonEnv
+                  pkgs.ffmpeg-headless
+                ];
                 src = self;
               }
               ''

@@ -166,6 +166,16 @@ def _check(
     return errors, {"taken": ", ".join(taken)}
 
 
+def _ffmpeg_note(hass: HomeAssistant) -> str:
+    relay = hass.data.get(DATA_RELAY)
+    if relay is None or relay.ffmpeg_ok:
+        return ""
+    return (
+        "\n\n**ffmpeg isn't available**, so *Silence the satellites* won't work: "
+        "the satellites will be heard. Home Assistant normally comes with ffmpeg."
+    )
+
+
 def _show_route_form(
     flow: ConfigFlow | ConfigSubentryFlow,
     step_id: str,
@@ -181,6 +191,7 @@ def _show_route_form(
             **_rule_descriptions(flow.hass),
             "taken": "",
             "name": current.get(CONF_NAME, ""),
+            "ffmpeg": _ffmpeg_note(flow.hass),
             **(placeholders or {}),
         },
     )

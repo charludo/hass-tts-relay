@@ -11,7 +11,7 @@
       },
       "add_route": {
         "title": "Add a route",
-        "description": "Relay voice replies and announcements of one or more satellites to a media player.\n\nReply rules allow you to further alter responses:\n{rules}",
+        "description": "Relay voice replies and announcements of one or more satellites to a media player.\n\nReply rules allow you to further alter responses:\n{rules}{ffmpeg}",
         "data": {
           "name": "Name",
           "satellites": "Satellites",
@@ -30,7 +30,7 @@
           "volume": "(Sonos only) Volume of the replies. Leave empty to use the speaker's set volume.",
           "duck": "Lower whatever plays on the speaker from the start of a command until you stop speaking.",
           "announcements": "Also play the satellite's announcements on the speaker. Reply rules don't apply to these.",
-          "silence": "Mute the satellites' own speakers while they reply, so the reply only plays on the speaker. For satellites that have a media player of their own in Home Assistant, like the Voice PE.",
+          "silence": "Silence reply copies sent to the satellite. LED animations keep working.",
           "stream": "With a conversation agent that streams, like most LLM ones, start playing a long reply while it's still being written, as the satellite does. **Rules that look at the response can't apply to these replies.**",
           "rules": "Rules for further altering responses. Custom rules should go into config/tts_relay/rules/"
         }
@@ -51,7 +51,7 @@
       "step": {
         "user": {
           "title": "Add a route",
-          "description": "Relay voice replies and announcements of one or more satellites to a media player.\n\nReply rules allow you to further alter responses:\n{rules}",
+          "description": "Relay voice replies and announcements of one or more satellites to a media player.\n\nReply rules allow you to further alter responses:\n{rules}{ffmpeg}",
           "data": {
             "name": "Name",
             "satellites": "Satellites",
@@ -70,14 +70,14 @@
             "volume": "(Sonos only) Volume of the replies. Leave empty to use the speaker's set volume.",
             "duck": "Lower whatever plays on the speaker from the start of a command until you stop speaking.",
             "announcements": "Also play the satellite's announcements on the speaker. Reply rules don't apply to these.",
-            "silence": "Mute the satellites' own speakers while they reply, so the reply only plays on the speaker. For satellites that have a media player of their own in Home Assistant, like the Voice PE.",
+            "silence": "Silence reply copies sent to the satellite. LED animations keep working.",
             "stream": "With a conversation agent that streams, like most LLM ones, start playing a long reply while it's still being written, as the satellite does. **Rules that look at the response can't apply to these replies.**",
             "rules": "Rules for further altering responses. Custom rules should go into config/tts_relay/rules/"
           }
         },
         "reconfigure": {
           "title": "Change {name}",
-          "description": "Relay voice replies and announcements of one or more satellites on a media player.\n\nReply rules allow you to further alter responses:\n{rules}",
+          "description": "Relay voice replies and announcements of one or more satellites on a media player.\n\nReply rules allow you to further alter responses:\n{rules}{ffmpeg}",
           "data": {
             "name": "Name",
             "satellites": "Satellites",
@@ -96,7 +96,7 @@
             "volume": "(Sonos only) Volume of the replies. Leave empty to use the speaker's set volume.",
             "duck": "Lower whatever plays on the speaker from the start of a command until you stop speaking.",
             "announcements": "Also play the satellite's announcements on the speaker. Reply rules don't apply to these.",
-            "silence": "Mute the satellites' own speakers while they reply, so the reply only plays on the speaker. For satellites that have a media player of their own in Home Assistant, like the Voice PE.",
+            "silence": "Silence reply copies sent to the satellite. LED animations keep working.",
             "stream": "With a conversation agent that streams, like most LLM ones, start playing a long reply while it's still being written, as the satellite does. **Rules that look at the response can't apply to these replies.**",
             "rules": "Rules for further altering responses. Custom rules should go into config/tts_relay/rules/"
           }
@@ -116,6 +116,10 @@
     "reply_format": {
       "title": "{target} can't play replies from {satellite}",
       "description": "{satellite} asks Home Assistant for its replies as {format}. Sonos speakers only play MP3 and WAV as announcements.\n\nThis is usually seen in a Home Assistant Voice PE, which asks for FLAC. Set its firmware to ask for WAV instead, as described under \"Learn more\". This message goes away after the next reply from {satellite} that {target} can play."
+    },
+    "silence_needs_ffmpeg": {
+      "title": "The satellites can't be silenced without ffmpeg",
+      "description": "*Silence the satellites* is on for {routes}, but ffmpeg isn't available. TTS Relay needs it to give the satellites a silent copy of their replies, so for now they will be played out loud. Everything else keeps working.\n\nHome Assistant normally comes with ffmpeg. If yours doesn't, install it, or set the path to it in the FFmpeg integration, and restart Home Assistant. This message goes away once ffmpeg is found, or once no route has the option on."
     }
   },
   "services": {

@@ -42,6 +42,7 @@ from .const import (
 )
 from .relay import Relay, Route, install, route_id
 from .rules import async_load_rules, async_load_sounds, user_dir
+from .silence import ReplyView, SilentView, async_ffmpeg_available
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -123,7 +124,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     relay = hass.data[DATA_RELAY] = Relay(hass)
     install()
 
-    await relay.silencer.async_load()
     await hass.async_add_executor_job(_create_user_dirs, hass)
     await hass.http.async_register_static_paths(
         [
@@ -132,6 +132,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             StaticPathConfig(SOUNDS_URL_PATH, str(user_dir(hass, "sounds")), False),
         ]
     )
+    relay.set_ffmpeg(await async_ffmpeg_available(hass))
+    hass.http.register_view(ReplyView(hass))
+    hass.http.register_view(SilentView(hass))
 
     async def load_rules_and_sounds() -> None:
         relay.rules = await async_load_rules(hass)
