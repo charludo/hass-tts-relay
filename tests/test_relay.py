@@ -142,6 +142,33 @@ async def test_other_players_duck_by_volume(hass, players):
     assert players.urls() == [BASE_URL + TTS]
 
 
+async def test_volume_restored_before_the_intent_without_vad_end(hass, players):
+    # STT engines that find the end of speech themselves skip vad-end.
+    playing(hass)
+    sonos = players.sonos["media_player.sonos"] = FakeSonos()
+    relay = await setup_relay(
+        hass,
+        players,
+        [
+            {"name": "Living room", "satellites": [SAT], "target": SPEAKER},
+            {"name": "Kitchen", "satellites": [OTHER_SAT], "target": "media_player.sonos"},
+        ],
+    )
+    for satellite in (SAT, OTHER_SAT):
+        await run(hass, relay, ev(PipelineEventType.RUN_START), satellite=satellite)
+    stt_end = ev(PipelineEventType.STT_END, {"stt_output": {"text": "Quieter"}})
+    for satellite in (SAT, OTHER_SAT):
+        await run(hass, relay, stt_end, satellite=satellite)
+    assert players.volumes == [(SPEAKER, 0.15), (SPEAKER, 0.5)]
+    assert sonos.websocket.cancelled == [sonos.last_announce_id]
+
+    # vad-end already restored it, so stt-end has nothing left to do.
+    await run(
+        hass, relay, ev(PipelineEventType.RUN_START), ev(PipelineEventType.STT_VAD_END), stt_end
+    )
+    assert players.volumes[2:] == [(SPEAKER, 0.15), (SPEAKER, 0.5)]
+
+
 async def test_volume_restored_before_the_reply(hass, players):
     playing(hass)
     relay = await setup_relay(

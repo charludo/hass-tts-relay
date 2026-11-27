@@ -120,10 +120,11 @@ class Relay:
                 self._acknowledged.discard(satellite)
                 if route.duck:
                     self._duck(route, satellite)
-            # Not stt-end, which waits for the transcript. Run end and errors too,
-            # so an aborted run doesn't leave the music down for 15 s.
             case (
-                PipelineEventType.STT_VAD_END | PipelineEventType.RUN_END | PipelineEventType.ERROR
+                PipelineEventType.STT_VAD_END
+                | PipelineEventType.STT_END
+                | PipelineEventType.RUN_END
+                | PipelineEventType.ERROR
             ):
                 self._release(route.target, satellite)
             case PipelineEventType.INTENT_END:
