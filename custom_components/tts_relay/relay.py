@@ -6,7 +6,9 @@ import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from functools import wraps
+from pathlib import PurePosixPath
 from typing import Any
+from urllib.parse import urlparse
 
 from homeassistant.components.assist_pipeline import PipelineEvent, PipelineEventType
 from homeassistant.components.assist_satellite.entity import (
@@ -20,11 +22,12 @@ from homeassistant.components.media_player import (
 )
 from homeassistant.const import ATTR_SUPPORTED_FEATURES
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.util import slugify
 
 from . import sonos
-from .const import DATA_RELAY, DUCK_URL_PATH
+from .const import DATA_RELAY, DOMAIN, DUCK_URL_PATH, ISSUE_REPLY_FORMAT, PE_DOCS_URL
 from .rules import Rule, by_priority, decide, variables
 
 _LOGGER = logging.getLogger(__name__)
@@ -32,6 +35,8 @@ _LOGGER = logging.getLogger(__name__)
 DUCKED_VOLUME = 0.3
 # The same announcement for several satellites of one route plays once.
 ANNOUNCEMENT_REPEAT_WINDOW = 5.0  # seconds
+# Sonos doesn't play other formats as an announcement.
+SONOS_CLIP_FORMATS = frozenset({".mp3", ".wav"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +72,7 @@ class Relay:
         self._lowered: dict[str, float] = {}
         self._duckers: dict[str, set[str]] = {}
         self._announced: dict[tuple[str, str], float] = {}  # (target, what) -> when
+        self._bad_format: set[str] = set()  # satellites already warned about
 
     @callback
     def add_route(self, route: Route) -> CALLBACK_TYPE:
@@ -128,11 +134,13 @@ class Relay:
                 else:
                     self._acknowledged.discard(satellite)
             case PipelineEventType.TTS_END:
+                tts_url = (data.get("tts_output") or {}).get("url")
+                self._check_format(route, satellite, tts_url)
                 url = self._reply_url(
                     route,
                     satellite,
                     self._intent_output.pop(satellite, None),
-                    (data.get("tts_output") or {}).get("url"),
+                    tts_url,
                     acknowledged=satellite in self._acknowledged,
                 )
                 self._acknowledged.discard(satellite)
@@ -160,8 +168,47 @@ class Relay:
         if key in self._announced:
             return
         self._announced[key] = now
+        if announcement.media_id_source == "tts":
+            self._check_format(route, satellite, announcement.media_id)
         if (url := self._absolute(announcement.media_id)) is not None:
             self._run(self.announce(route, url), "announcement", route.target)
+
+    def _check_format(self, route: Route, satellite: str, tts_url: str | None) -> None:
+        """Raise a repair if the satellite asks for speech the target can't play.
+
+        The satellite picks the format, e.g. FLAC on the Voice PE.
+        """
+        if not tts_url or not sonos.is_sonos(self.hass, route.target):
+            return
+        issue_id = f"{ISSUE_REPLY_FORMAT}_{satellite}"
+        extension = PurePosixPath(urlparse(tts_url).path).suffix.lower()
+        if not extension or extension in SONOS_CLIP_FORMATS:
+            self._bad_format.discard(satellite)
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+            return
+        if satellite not in self._bad_format:
+            self._bad_format.add(satellite)
+            _LOGGER.warning(
+                "%s asks for %s speech, which %s can't play as an announcement. See %s",
+                satellite,
+                extension,
+                route.target,
+                PE_DOCS_URL,
+            )
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=False,
+            learn_more_url=PE_DOCS_URL,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=ISSUE_REPLY_FORMAT,
+            translation_placeholders={
+                "satellite": satellite,
+                "target": route.target,
+                "format": extension.removeprefix(".").upper(),
+            },
+        )
 
     def _duck(self, route: Route, satellite: str) -> None:
         duckers = self._duckers.setdefault(route.target, set())

@@ -258,6 +258,46 @@ The announcements will then play instantly, without waiting for that timeout.
 
 &#160;
 
+#### Voice Preview Edition
+
+Satellites have the power to tell Home Assistant which audio format they want their replies in.
+Wyoming satellites like LVA ask for WAV, but the Home Assistant Voice PE asks for FLAC.
+Sonos speakers only play MP3 and WAV as announcements, flac fails to play.
+The Sonos log just says *"AudioClip announce only supports MP3 and WAV"*.
+TTS Relay shows a warning under **Settings** -> **Repairs** when this happens.
+Other speakers play FLAC just fine.
+
+To fix it, make the Voice PE ask for WAV.
+This means taking control of its firmware: adopt it in the [ESPHome Device Builder](https://esphome.io/guides/getting_started_hassio/), then override the format of its media player's announcement pipeline:
+
+```yaml
+# The config ESPHome created when you adopted the Voice PE
+packages:
+  Nabu Casa.Home Assistant Voice PE: github://esphome/home-assistant-voice-pe/home-assistant-voice.yaml
+
+media_player:
+  - id: !extend external_media_player
+    announcement_pipeline:
+      format: WAV # was FLAC
+      # The rest as in the Voice PE's own config (firmware 26.9.0):
+      num_channels: 1
+      sample_rate: 48000
+      speaker: announcement_resampling_speaker
+      sources:
+        - audio_file_announcement_source
+        - http_announcement_source
+```
+
+If a newer Voice PE firmware changes these, copy the `announcement_pipeline` of [its config](https://github.com/esphome/home-assistant-voice-pe/blob/main/home-assistant-voice.yaml) and change only `format`.
+
+Install the firmware, then ask the Voice PE something.
+
+> [!WARNING]
+> Once adopted, the Voice PE no longer gets firmware updates from Nabu Casa automatically!
+> You have to install them yourself from the ESPHome Device Builder.
+
+&#160;
+
 ### 🔍 Actions
 
 TTS Relay comes with two helper actions.
@@ -287,6 +327,7 @@ Reads the reply rules and sounds again.
   **For any other (Cast, AirPlay, DLNA, ...),** a workaround is to add that speaker to [Music Assistant](https://music-assistant.io) and pick the `media_player` entity Music Assistant creates for it instead.
   This is because Music Assistant implements announcements for these, and I didn't want to reinvent the wheel here.
 - One speaker per satellite.
+- Sonos only plays MP3 and WAV replies. Satellites asking for other formats, like the Voice PE, need a firmware change (see [Voice Preview Edition](#voice-preview-edition)).
 - Announcements repeated within 5 seconds get dropped (because we need to deduplicate announcements going to multiple satellites that are TTS Relay-routed to a single speaker).
 - Pre-announcement chimes are dropped without replacement, due to wildly varying behavior on different speakers how multiple announcements in quick successions are handled.
 

@@ -100,6 +100,12 @@
       }
     }
   },
+  "issues": {
+    "reply_format": {
+      "title": "{target} can't play replies from {satellite}",
+      "description": "{satellite} asks Home Assistant for its replies as {format}. Sonos speakers only play MP3 and WAV as announcements.\n\nThis is usually seen in a Home Assistant Voice PE, which asks for FLAC. Set its firmware to ask for WAV instead, as described under \"Learn more\". This message goes away after the next reply from {satellite} that {target} can play."
+    }
+  },
   "services": {
     "stop": {
       "name": "Stop",

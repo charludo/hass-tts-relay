@@ -462,6 +462,8 @@ async def test_ui_texts_load(hass, players):
     assert texts["component.tts_relay.config.step.add_route.data.satellites"] == "Satellites"
     texts = await async_get_translations(hass, "en", "config_subentries", ["tts_relay"])
     assert texts["component.tts_relay.config_subentries.route.initiate_flow.user"] == "Add route"
+    texts = await async_get_translations(hass, "en", "issues", ["tts_relay"])
+    assert "{format}" in texts["component.tts_relay.issues.reply_format.description"]
 
 
 def satellite_entity(hass, entity_id):
@@ -514,3 +516,63 @@ async def test_announcements_can_be_left_on_the_satellite(hass, players):
     busy._is_announcing = True
     await announce(hass, busy, message="Busy")
     assert players.played == []
+
+
+def reply_issues(hass):
+    from homeassistant.helpers import issue_registry as ir
+
+    return {
+        issue_id: issue.translation_placeholders
+        for (domain, issue_id), issue in ir.async_get(hass).issues.items()
+        if domain == "tts_relay"
+    }
+
+
+async def test_flags_speech_sonos_cant_play(hass, players, caplog):
+    players.sonos[SPEAKER] = FakeSonos()
+    relay = await setup_relay(
+        hass, players, [{"name": "Living room", "satellites": [SAT], "target": SPEAKER}]
+    )
+    flac = "/api/tts_proxy/abc.flac"
+    await run(hass, relay, tts_end(flac), tts_end(flac))
+    # Still tried, in case the speaker copes after all.
+    assert players.urls() == [BASE_URL + flac] * 2
+    assert reply_issues(hass) == {
+        f"reply_format_{SAT}": {"satellite": SAT, "target": SPEAKER, "format": "FLAC"}
+    }
+    assert caplog.text.count("asks for .flac speech") == 1
+
+    await run(hass, relay, tts_end("/api/tts_proxy/abc.wav"))
+    assert reply_issues(hass) == {}
+
+
+async def test_other_players_play_any_speech_format(hass, players):
+    relay = await setup_relay(
+        hass, players, [{"name": "Living room", "satellites": [SAT], "target": SPEAKER}]
+    )
+    await run(hass, relay, tts_end("/api/tts_proxy/abc.flac"))
+    assert reply_issues(hass) == {}
+
+
+async def test_flags_tts_announcements_sonos_cant_play(hass, players):
+    from homeassistant.components.assist_satellite.entity import AssistSatelliteAnnouncement
+
+    await setup_relay(hass, players, [BOTH])
+    players.sonos[SPEAKER] = FakeSonos()
+    relay = hass.data["tts_relay"]
+
+    def announcement(message, media_id, source):
+        return AssistSatelliteAnnouncement(
+            message=message,
+            media_id=media_id,
+            original_media_id=media_id,
+            tts_token=None,
+            media_id_source=source,
+        )
+
+    # A file someone picked isn't the satellite's doing.
+    relay.handle_announcement(SAT, announcement("", "/local/song.flac", "url"))
+    assert reply_issues(hass) == {}
+    relay.handle_announcement(SAT, announcement("Hi", "/api/tts_proxy/abc.flac", "tts"))
+    assert list(reply_issues(hass)) == [f"reply_format_{SAT}"]
+    await hass.async_block_till_done(wait_background_tasks=True)

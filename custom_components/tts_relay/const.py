@@ -32,3 +32,6 @@ DUCK_URL_PATH = f"/{DOMAIN}/duck.mp3"
 SOUNDS_URL_PATH = f"/{DOMAIN}/sounds"
 
 DATA_RELAY: HassKey[Relay] = HassKey(DOMAIN)
+
+ISSUE_REPLY_FORMAT = "reply_format"
+PE_DOCS_URL = "https://github.com/charludo/hass-tts-relay#voice-preview-edition"
